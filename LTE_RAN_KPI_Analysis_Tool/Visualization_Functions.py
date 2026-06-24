@@ -303,34 +303,65 @@ def melt_kpis_for_trend(df, value_name="KPI_Value"):
     return melted
 
 
-def calculate_enhancement_potential(original_df, degraded_cell_ids, selected_kpi_col,
-                                    bad_direction, selected_kpi=None, mode="fix"):
-    """Dashboard wrapper. Delegates to the single shared engine in
-    Generate_Word_Report so the chart number matches the report number exactly.
-
-    metric_kind and the load weight are resolved from KPI_CONFIGS - by KPI name
-    when provided, otherwise by matching the target column. Returns a float
-    percentage or float('nan') when not computable (render with the title helper).
+def calculate_enhancement_potential(original_df, degraded_cell_ids, selected_kpi_col, bad_direction):
     """
-    from Generate_Word_Report import enhancement_potential_core
+    Calculate the potential KPI enhancement if degraded cells are removed.
+    
+    Args:
+        original_df: Original DataFrame with all KPI data
+        degraded_cell_ids: Set of (Site, Cell) tuples for degraded cells
+        selected_kpi_col: Target KPI column name
+        bad_direction: "high" or "low"
+        
+    Returns:
+        Enhancement potential as percentage (positive = improvement)
+    """
+    if original_df is None or original_df.empty or not degraded_cell_ids:
+        return 0.0
 
-    config = KPI_CONFIGS.get(selected_kpi, {}) if selected_kpi else {}
-    if not config:
-        # Fall back: find the KPI whose target column matches the one we were given.
-        for _cfg in KPI_CONFIGS.values():
-            if _cfg.get("target_kpi") == selected_kpi_col:
-                config = _cfg
-                break
+    if DATE_COL not in original_df.columns or selected_kpi_col not in original_df.columns:
+        return 0.0
 
-    value, _meta = enhancement_potential_core(
-        original_df, degraded_cell_ids,
-        target_col=selected_kpi_col,
-        bad_direction=bad_direction,
-        metric_kind=config.get("metric_kind", "intensive"),
-        weight_col=config.get("weight_kpi"),
-        mode=mode,
-    )
-    return value
+    if SITE_COL not in original_df.columns or CELL_COL not in original_df.columns:
+        return 0.0
+
+    df = original_df.copy()
+    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    df = df.dropna(subset=[DATE_COL, selected_kpi_col])
+    df[selected_kpi_col] = pd.to_numeric(df[selected_kpi_col], errors="coerce")
+
+    if df.empty:
+        return 0.0
+
+    # Get last day data
+    last_day = df[DATE_COL].max()
+    last_day_df = df[df[DATE_COL] == last_day]
+
+    if last_day_df.empty:
+        return 0.0
+
+    # Before: average with ALL cells on last day
+    before_avg = last_day_df[selected_kpi_col].mean()
+
+    # After: average without degraded cells on last day
+    mask = last_day_df.set_index([SITE_COL, CELL_COL]).index.isin(degraded_cell_ids)
+    clean_df = last_day_df[~mask]
+
+    if clean_df.empty:
+        return 0.0
+
+    after_avg = clean_df[selected_kpi_col].mean()
+
+    # Calculate enhancement based on bad direction
+    if abs(before_avg) < 1e-10:
+        return 0.0
+
+    if bad_direction == "high":
+        # High is bad (e.g., drop rate): improvement = decrease in value
+        return ((before_avg - after_avg) / before_avg) * 100
+    else:
+        # Low is bad (e.g., throughput): improvement = increase in value
+        return ((after_avg - before_avg) / before_avg) * 100
 
 
 # ============================================================
@@ -542,11 +573,8 @@ def show_trend_dashboard(parent_window, original_df, output_df, degraded_cell_id
         # Calculate enhancement potential using the centralized function
         bad_direction = get_kpi_bad_direction(col, selected_kpi)
         enhancement_potential = calculate_enhancement_potential(
-            original_df, degraded_cell_ids, col, bad_direction, selected_kpi=selected_kpi
+            original_df, degraded_cell_ids, col, bad_direction
         )
-        _enh_txt = "N/A" if (enhancement_potential is None or
-                             (isinstance(enhancement_potential, float) and np.isnan(enhancement_potential))) \
-                   else f"{enhancement_potential:.2f}%"
         
         fig = Figure(figsize=(12, 5), dpi=100)
         ax = fig.add_subplot(111)
@@ -568,7 +596,7 @@ def show_trend_dashboard(parent_window, original_df, output_df, degraded_cell_id
         ax.set_xlabel('Date')
         ax.set_ylabel(col[:40])
         ax.set_title(
-            f'{col[:40]} - Daily Trend (Enhancement Potential: {_enh_txt})'
+            f'{col[:40]} - Daily Trend (Enhancement Potential: {enhancement_potential:.2f}%)'
         )
         ax.legend()
         ax.grid(True, alpha=0.3)

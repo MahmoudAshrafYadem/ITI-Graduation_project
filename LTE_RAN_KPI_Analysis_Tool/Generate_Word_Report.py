@@ -21,175 +21,77 @@ except ImportError:
     DOCX_AVAILABLE = False
 
 
-_ENH_EPS = 1e-9
-
-
-def enhancement_potential_core(df, degraded_cell_ids, *, target_col, bad_direction,
-                               metric_kind, weight_col=None, mode="fix",
-                               recent_days=1, baseline_days=7, min_cells=2):
-    """Reliable enhancement-potential engine (shared by report and dashboard).
-
-    Answers: "How much would the network KPI improve if the degraded cells were
-    restored to their own baseline (mode='fix'), keeping their users in the
-    network?"  An optional mode='remove' models the cells (and their users/load)
-    leaving the network instead.
-
-    Returns:
-        (value, meta) where value is a percentage (positive = improvement) or
-        float('nan') when the result is NOT computable. meta['reason'] explains a
-        NaN. The function NEVER returns 0.0 to mean "could not compute" - 0.0 only
-        ever means a genuine zero enhancement.
-
-    Args:
-        target_col:   target KPI column name.
-        bad_direction:"low" or "high".
-        metric_kind:  'extensive' -> aggregate as a network SUM (volumes/counts);
-                      'intensive'  -> load-weighted MEAN (rates/%/throughput).
-        weight_col:   per-cell load weight (active users / attempts) for intensive
-                      KPIs. None -> unweighted mean.
-        mode:         'fix' (restore degraded cells to baseline; users stay) or
-                      'remove' (drop degraded cells and their load).
-        recent_days:  size of the recent window (1 = last day).
-        baseline_days:size of the baseline window immediately before the recent one.
-        min_cells:    minimum distinct cells required on the recent day.
+def calculate_enhancement_potential(original_df, degraded_cell_ids, selected_kpi):
     """
-    meta = {"reason": None, "n_cells": 0, "n_degraded_matched": 0,
-            "metric_kind": metric_kind, "mode": mode, "weight_col": weight_col}
+    Calculate the potential KPI enhancement if degraded cells are removed.
+    
+    Measures: "How much would the network KPI improve on the last day
+    if we fix/remove the degraded cells?"
+    
+    Args:
+        original_df: Original DataFrame with all KPI data
+        degraded_cell_ids: Set of (Site, Cell) tuples for degraded cells
+        selected_kpi: KPI short name (e.g., "DL Traffic")
+        
+    Returns:
+        Enhancement potential as percentage (positive = improvement)
+    """
+    if original_df is None or original_df.empty:
+        return 0.0
 
-    if df is None or getattr(df, "empty", True):
-        meta["reason"] = "no data"
-        return float("nan"), meta
-    if not target_col:
-        meta["reason"] = "no target column configured"
-        return float("nan"), meta
-    for c in (DATE_COL, target_col, SITE_COL, CELL_COL):
-        if c not in df.columns:
-            meta["reason"] = f"missing column: {c}"
-            return float("nan"), meta
+    if not degraded_cell_ids:
+        return 0.0
 
-    degraded_cell_ids = degraded_cell_ids or set()
-    use_w = bool(weight_col) and weight_col in df.columns and metric_kind == "intensive"
-    cols = [DATE_COL, SITE_COL, CELL_COL, target_col] + ([weight_col] if use_w else [])
-    d = df[cols].copy()
-    d[DATE_COL] = pd.to_datetime(d[DATE_COL], errors="coerce")
-    d[target_col] = pd.to_numeric(d[target_col], errors="coerce")
-    d = d.dropna(subset=[DATE_COL, target_col])
-    if use_w:
-        d[weight_col] = pd.to_numeric(d[weight_col], errors="coerce")
-    if d.empty:
-        meta["reason"] = "no valid rows after cleaning"
-        return float("nan"), meta
+    config = KPI_CONFIGS.get(selected_kpi, {})
+    target_kpi = config.get("target_kpi")
+    bad_direction = config.get("bad_direction", "low")
 
-    last_day = d[DATE_COL].max()
-    recent_start = last_day - pd.Timedelta(days=recent_days - 1)
-    base_end = recent_start - pd.Timedelta(days=1)
-    base_start = base_end - pd.Timedelta(days=baseline_days - 1)
-    recent = d[d[DATE_COL] >= recent_start]
-    base = d[(d[DATE_COL] >= base_start) & (d[DATE_COL] <= base_end)]
+    if not target_kpi or target_kpi not in original_df.columns:
+        return 0.0
 
-    # Reduce per (cell, day) first, THEN average over days -> one value per cell.
-    # This removes any distortion from uneven sampling (e.g. hourly rows).
-    val_how = "sum" if metric_kind == "extensive" else "mean"
+    if DATE_COL not in original_df.columns:
+        return 0.0
 
-    def per_cell(frame, col, how):
-        if frame.empty:
-            return pd.Series(dtype=float)
-        return frame.groupby([CELL_COL, DATE_COL])[col].agg(how).groupby(level=0).mean()
+    df = original_df.copy()
+    df[DATE_COL] = pd.to_datetime(df[DATE_COL], errors="coerce")
+    df = df.dropna(subset=[DATE_COL, target_kpi])
+    df[target_kpi] = pd.to_numeric(df[target_kpi], errors="coerce")
 
-    recent_val = per_cell(recent, target_col, val_how)
-    base_val = per_cell(base, target_col, val_how)
-    cells = recent_val.index
-    if len(cells) < min_cells:
-        meta["reason"] = f"too few cells on recent day ({len(cells)})"
-        return float("nan"), meta
-    meta["n_cells"] = int(len(cells))
+    if df.empty:
+        return 0.0
 
-    if metric_kind == "intensive" and use_w:
-        w = per_cell(recent, weight_col, "mean").reindex(cells).where(lambda s: s > 0)
-        if int(w.notna().sum()) == 0:
-            meta["reason"] = "no valid weights (all zero/NaN)"
-            return float("nan"), meta
-        keep = w.notna()
-        cells = cells[keep]
-        recent_val = recent_val[keep]
-        base_val = base_val.reindex(cells)
-        w = w[keep]
-    else:
-        w = pd.Series(1.0, index=cells)
-        meta["weight_col"] = None if metric_kind == "intensive" else weight_col
+    # Get last day data
+    last_day = df[DATE_COL].max()
+    last_day_df = df[df[DATE_COL] == last_day]
 
-    cell_site = recent.drop_duplicates(CELL_COL).set_index(CELL_COL)[SITE_COL].reindex(cells)
-    deg_mask = pd.Series([(cell_site.get(c), c) in degraded_cell_ids for c in cells], index=cells)
-    meta["n_degraded_matched"] = int(deg_mask.sum())
-    if int(deg_mask.sum()) == 0:
-        meta["reason"] = "no degraded cells matched recent-day data"
-        return float("nan"), meta
+    if last_day_df.empty:
+        return 0.0
 
-    def network(values):
-        v = values.values
-        ww = w.reindex(values.index).values
-        if metric_kind == "extensive":
-            return float(np.nansum(v))
-        sw = np.nansum(ww)
-        return float("nan") if sw < _ENH_EPS else float(np.nansum(v * ww) / sw)
+    # Before: average with ALL cells on last day
+    before_avg = last_day_df[target_kpi].mean()
 
-    before = network(recent_val)
+    # After: average without degraded cells on last day
+    if SITE_COL not in last_day_df.columns or CELL_COL not in last_day_df.columns:
+        return 0.0
 
-    if mode == "fix":
-        counterfactual = recent_val.copy()
-        bv = base_val.reindex(cells)
-        restore = deg_mask & bv.notna()
-        if int(restore.sum()) == 0:
-            meta["reason"] = "degraded cells have no baseline to restore to"
-            return float("nan"), meta
-        idx = restore.index[restore]
-        counterfactual.loc[idx] = bv.loc[idx]
-        after = network(counterfactual)
-    else:  # remove
-        survivors = recent_val[~deg_mask]
-        if survivors.empty:
-            meta["reason"] = "all cells degraded (remove-mode undefined)"
-            return float("nan"), meta
-        after = network(survivors)
+    mask = last_day_df.set_index([SITE_COL, CELL_COL]).index.isin(degraded_cell_ids)
+    clean_df = last_day_df[~mask]
 
-    if before is None or np.isnan(before) or abs(before) < _ENH_EPS:
-        meta["reason"] = "network baseline ~ 0 (ratio undefined)"
-        return float("nan"), meta
+    if clean_df.empty:
+        return 0.0
+
+    after_avg = clean_df[target_kpi].mean()
+
+    # Calculate enhancement based on bad direction
+    if abs(before_avg) < 1e-10:
+        return 0.0
 
     if bad_direction == "high":
-        enh = ((before - after) / before) * 100.0
+        # High is bad (e.g., drop rate): improvement = decrease in value
+        return ((before_avg - after_avg) / before_avg) * 100
     else:
-        enh = ((after - before) / before) * 100.0
-    return float(enh), meta
-
-
-def format_enhancement_pct(value):
-    """Render an enhancement value for display: 'N/A' for NaN, else 'x.xx%'."""
-    try:
-        if value is None or (isinstance(value, float) and np.isnan(value)):
-            return "N/A"
-        return f"{value:.2f}%"
-    except Exception:
-        return "N/A"
-
-
-def calculate_enhancement_potential(original_df, degraded_cell_ids, selected_kpi, mode="fix"):
-    """Public wrapper used by reports. Looks up KPI metadata from KPI_CONFIGS and
-    delegates to enhancement_potential_core().
-
-    Returns a float percentage, or float('nan') when not computable (callers should
-    render NaN via format_enhancement_pct(), not as a number).
-    """
-    config = KPI_CONFIGS.get(selected_kpi, {})
-    value, _meta = enhancement_potential_core(
-        original_df, degraded_cell_ids,
-        target_col=config.get("target_kpi"),
-        bad_direction=config.get("bad_direction", "low"),
-        metric_kind=config.get("metric_kind", "intensive"),
-        weight_col=config.get("weight_kpi"),
-        mode=mode,
-    )
-    return value
+        # Low is bad (e.g., throughput): improvement = increase in value
+        return ((after_avg - before_avg) / before_avg) * 100
 
 
 def get_top_cells_by_degradation(output_df, n=10):
@@ -269,7 +171,7 @@ def generate_word_report(output_df, summary_df, analysis_mode, selected_kpi, bas
             doc.add_paragraph(f"Degraded Cells: {len(output_df) if output_df is not None else 0}")
             if original_df is not None and degraded_cell_ids:
                 enhancement = calculate_enhancement_potential(original_df, degraded_cell_ids, selected_kpi)
-                doc.add_paragraph(f"Enhancement Potential: {format_enhancement_pct(enhancement)}")
+                doc.add_paragraph(f"Enhancement Potential: {enhancement:.2f}%")
         
         # ============================================================
         # MAIN KPI SUMMARY TABLE - All KPIs with key metrics
@@ -321,7 +223,7 @@ def generate_word_report(output_df, summary_df, analysis_mode, selected_kpi, bas
                             # Use calculated enhancement potential
                             kpi_name = row.get('kpi_name')
                             if kpi_name in enhancement_values:
-                                cells[i].text = format_enhancement_pct(enhancement_values[kpi_name])
+                                cells[i].text = f"{enhancement_values[kpi_name]:.2f}%"
                             else:
                                 cells[i].text = "N/A"
                         else:
