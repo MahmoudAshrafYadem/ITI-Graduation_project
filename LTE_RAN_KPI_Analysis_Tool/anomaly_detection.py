@@ -387,13 +387,13 @@ def detect_kpi_anomalies_last_day(
                         severity = "Low"
 
                  # Build description
-                 if hist_days == 1:
+                if hist_days == 1:
                      desc = (
                          f"KPI spike on last day: value={last_value:.2f} vs "
                           f"historical value={history_values[0]:.2f} "
                          f"(change={pct_change:+.1f}%, impact={impact}, method={spike_method})"
                      )
-                 else:
+                else:
                      desc = (
                          f"KPI spike on last day: value={last_value:.2f} vs "
                          f"24-day median={hist_median:.2f} "
