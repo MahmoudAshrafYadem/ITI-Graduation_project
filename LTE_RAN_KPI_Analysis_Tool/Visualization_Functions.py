@@ -38,7 +38,7 @@ KPI_SHORT_NAMES = [
     "UL Throughput",
     "RRC Setup SR",
     "ERAB Setup SR",
-    "Drop Rate",
+"E-RAB Drop Rate",
     "HO Success Rate",
     "Availability",
     "RACH Success Rate",
@@ -92,10 +92,10 @@ KPI_LIST = [
         "bad_direction": "low",
     },
     {
-        "short_name": "Drop Rate",
+        "short_name": "E-RAB Drop Rate",
         "target_column": "E-RAB Drop Rate (E-NodeB + MME) %",
         "category": "Retainability",
-        "threshold_%": 20.0,
+        "threshold_%": 0.5,
         "bad_direction": "high",
     },
     {
@@ -147,7 +147,7 @@ KPI_CATEGORIES = {
     "Traffic": ["DL Traffic", "UL Traffic"],
     "Integrity": ["DL Throughput", "UL Throughput"],
     "Accessibility": ["RRC Setup SR", "ERAB Setup SR", "RACH Success Rate"],
-    "Retainability": ["Drop Rate"],
+    "Retainability": ["E-RAB Drop Rate"],
     "Mobility": ["HO Success Rate", "RRC Re-establishment"],
     "Availability": ["Availability"],
     "CSFB / Voice Accessibility": ["CSFB KPI"],
@@ -419,7 +419,7 @@ def show_dashboard(parent_window, output_df, summary_df, analysis_mode, selected
         metrics_frame.columnconfigure(i, weight=1)
     
     # Charts
-    fig1 = Figure(figsize=(8, 6), dpi=100)
+    fig1 = Figure(figsize=(5, 6), dpi=100)
     ax1 = fig1.add_subplot(111)
     
     if analysis_mode == "all" and summary_df is not None and "degraded_cells_count" in summary_df.columns:

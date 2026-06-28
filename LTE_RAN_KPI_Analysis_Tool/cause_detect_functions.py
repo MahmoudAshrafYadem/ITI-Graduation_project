@@ -6,6 +6,7 @@
 
 import numpy as np
 import pandas as pd
+import re
 
 from KPI_Configuration import CELL_ID_COLS, SITE_COL, CELL_COL, DATE_COL
 from clean_excel_and_helpers import (
@@ -14,6 +15,24 @@ from clean_excel_and_helpers import (
     find_matching_column,
     calculate_degradation,
 )
+
+def _is_ratio_feature(feature_col):
+    """Check if a feature column represents a ratio/percentage KPI.
+    
+    Percentage features are those with explicit % symbols or known percentage-based names.
+    Counters (like HO Prepare Failed Times) use percentage change.
+    """
+    feature_lower = str(feature_col).lower()
+    # Must have % symbol or be a known percentage success/counter rate
+    pct_indicators = ["%", "availability", "setup success rate", "sr%", "contention-based sr",
+                      "non-contention", "packet loss rate", "drop rate"]
+    # Exclude counter features that aren't percentages
+    non_pct_keywords = ["failed times", "failure time", "failure", "total", "times"]
+    
+    has_pct = any(ind in feature_lower for ind in pct_indicators)
+    is_counter = any(kw in feature_lower for kw in non_pct_keywords)
+    
+    return has_pct and not is_counter
 
 
 def find_degradation_causes_vectorized(df, rules):
@@ -50,21 +69,38 @@ def find_degradation_causes_vectorized(df, rules):
         bad_direction = rule["bad_direction"]
         threshold = rule["threshold"]
         severity = rule.get("severity", 3)
+        is_ratio = _is_ratio_feature(feature)
         
         # Vectorized calculation using numpy arrays
         with np.errstate(divide='ignore', invalid='ignore'):
-            if bad_direction == "low":
-                change_pct = np.where(
-                    baseline_values != 0,
-                    ((baseline_values - recent_values) / baseline_values) * 100,
-                    np.nan
-                )
-            else:  # high
-                change_pct = np.where(
-                    baseline_values != 0,
-                    ((recent_values - baseline_values) / baseline_values) * 100,
-                    np.nan
-                )
+            if is_ratio:
+                # Ratio KPIs: absolute difference in percentage points
+                if bad_direction == "low":
+                    change_pct = np.where(
+                        np.isfinite(recent_values) & np.isfinite(baseline_values),
+                        baseline_values - recent_values,
+                        np.nan
+                    )
+                else:  # high
+                    change_pct = np.where(
+                        np.isfinite(recent_values) & np.isfinite(baseline_values),
+                        recent_values - baseline_values,
+                        np.nan
+                    )
+            else:
+                # Non-ratio KPIs: percentage change
+                if bad_direction == "low":
+                    change_pct = np.where(
+                        baseline_values != 0,
+                        ((baseline_values - recent_values) / baseline_values) * 100,
+                        np.nan
+                    )
+                else:  # high
+                    change_pct = np.where(
+                        baseline_values != 0,
+                        ((recent_values - baseline_values) / baseline_values) * 100,
+                        np.nan
+                    )
         
         # Create mask for cells passing threshold
         mask = change_pct >= threshold
@@ -183,6 +219,7 @@ def find_degradation_causes_row(row, rules):
             recent_value,
             baseline_value,
             rule["bad_direction"],
+            is_ratio=_is_ratio_feature(feature),
         )
         
         if pd.isna(change_pct):

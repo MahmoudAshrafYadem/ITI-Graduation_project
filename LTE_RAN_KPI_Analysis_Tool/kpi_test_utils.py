@@ -47,7 +47,7 @@ def build_frame(cells, kpi_name, anchor=ANCHOR):
           }
         Any value of None / np.nan is simply not emitted (missing day).
     kpi_name : str
-        Key into KPI_CONFIGS (e.g. "DL Throughput", "Drop Rate").
+        Key into KPI_CONFIGS (e.g. "DL Throughput", "E-RAB Drop Rate").
     """
     tgt = target_col(kpi_name)
     rows = []

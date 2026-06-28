@@ -20,9 +20,10 @@
 10. [Root Cause Analysis Engine](#10-root-cause-analysis-engine)
 11. [Visualization & Reporting](#11-visualization--reporting)
 12. [Testing & Validation](#12-testing--validation)
-13. [Extending the System](#13-extending-the-system)
-14. [Troubleshooting](#14-troubleshooting)
-15. [License & Attribution](#15-license--attribution)
+13. [Recent Changes](#13-recent-changes)
+14. [Extending the System](#14-extending-the-system)
+15. [Troubleshooting](#15-troubleshooting)
+16. [License & Attribution](#16-license--attribution)
 
 ---
 
@@ -92,6 +93,7 @@ Our analyzer implements a **three-layer analytical pipeline**:
 | **Carrier Aggregation** | SCell activation, 3CC CA, FDD-TDD CA tracking |
 | **MIMO/Rank Analysis** | Rank 2 reporting, CQI codeword tracking |
 | **Interactive Dashboard** | Tkinter GUI with real-time charts |
+| **Streamlit Web Interface** | Browser-based dashboard with tabbed results and interactive charts |
 | **Word Report Generation** | Automated DOCX export with formatted tables |
 | **Batch CSV Export** | Per-KPI and combined output files |
 
@@ -102,29 +104,29 @@ Our analyzer implements a **three-layer analytical pipeline**:
 ### 2.1 High-Level Architecture
 
 ```
-                    +---------------------+
-                    |   User Interface    |
-                    |   (Tkinter GUI)     |
-                    +----------+----------+
-                               |
-                    +----------v----------+
-                    |  Analysis Engine    |
-                    |  (Core Pipeline)    |
-                    +----------+----------+
-                               |
-        +----------------------+----------------------+
-        |                      |                      |
-+-------v--------+    +--------v---------+    +------v-------+
-|  Data Quality  |    |  Degradation     |    |   Cause      |
-|  Validator     |    |  & Baseline Eng. |    |  Detection   |
-+-------+--------+    +--------+---------+    +------+-------+
-        |                      |                    |
-        +----------------------+----------------------+
-                               |
-                    +----------v----------+
-                    |  Output Generators  |
-                    |  (CSV / Word / Viz) |
-                    +---------------------+
+                     +---------------------+
+                     |   User Interface    |
+                     | (Tkinter / Streamlit)|
+                     +----------+----------+
+                                |
+                     +----------v----------+
+                     |  Analysis Engine    |
+                     |  (Core Pipeline)    |
+                     +----------+----------+
+                                |
+         +----------------------+----------------------+
+         |                      |                      |
+ +-------v--------+    +--------v---------+    +------v-------+
+ |  Data Quality  |    |  Degradation     |    |   Cause      |
+ |  Validator     |    |  & Baseline Eng. |    |  Detection   |
+ +-------+--------+    +--------+---------+    +------+-------+
+         |                      |                    |
+         +----------------------+----------------------+
+                                |
+                     +----------v----------+
+                     |  Output Generators  |
+                     | (CSV / Word / Viz)  |
+                     +---------------------+
 ```
 
 ### 2.2 Module Interaction Diagram
@@ -132,7 +134,7 @@ Our analyzer implements a **three-layer analytical pipeline**:
 ```
 main.py
   |
-  +---> initialization.py  ---> LTEKPIAnalyzerApp (GUI Controller)
+  +---> initialization.py  ---> LTEKPIAnalyzerApp (Tkinter GUI Controller)
   |       |
   |       +---> main_function_for_selected_kpi.py
   |       |       +---> KPI_Configuration.py      (Rules & Thresholds)
@@ -146,6 +148,7 @@ main.py
   |       +---> Save_Results.py                    (CSV Export)
   |       +---> Loading_file_inputs_outputs.py     (File I/O)
   |
+  +---> app_streamlit.py  ---> Streamlit Web UI
   +---> test_data_quality.py    (Integration Tests)
   +---> test_negative_filter.py  (Unit Tests)
 ```
@@ -227,6 +230,15 @@ Degradation % = ((baseline_value - recent_value) / baseline_value) x 100
 Degradation % = ((recent_value - baseline_value) / baseline_value) x 100
 ```
 
+**Ratio KPI Special Case:**
+For percentage-based KPIs (RRC SR, Drop Rate, HO SR, Availability, etc.), the degradation is calculated as an **absolute difference in percentage points** rather than relative percentage change:
+
+```
+Degradation % = |recent_value - baseline_value|
+```
+
+This avoids division-by-zero when baseline is 0 and correctly reflects that a drop from 99% to 95% is a 4-percentage-point degradation regardless of the baseline value.
+
 A cell is flagged as **degraded** when:
 ```
 Degradation % >= Threshold AND (statistical_significance = True OR disabled)
@@ -278,12 +290,12 @@ The cause with the **highest score** is reported as the main root cause.
 
 Columns are classified by physical unit:
 
-| Unit Type | Valid Range | Example Columns |
-|-----------|-------------|-----------------|
-| `nonneg` | >= 0 | Traffic volumes, counters, throughput |
-| `pct` | [0, 100] | Success rates, utilization percentages |
-| `dbm` | <= 0 | RSRP, interference (received power) |
-| `db` | Any | SINR, RSRQ (can be positive or negative) |
+| Unit Type | Valid Range | Example Columns | Notes |
+|-----------|-------------|-----------------|-------|
+| `nonneg` | >= 0 | Traffic volumes, counters, throughput | Zero is valid (not missing) |
+| `pct` | [0, 100] | Success rates, utilization percentages | Zero baseline handled specially for ratio KPIs |
+| `dbm` | <= 0 | RSRP, interference (received power) | Negative values are physically valid |
+| `db` | Any | SINR, RSRQ (can be positive or negative) | Negative values are physically valid |
 
 #### 3.5.2 Sentinel Value Detection
 
@@ -303,6 +315,20 @@ imputed_value = median(same_weekday_values_over_last_N_weeks)
 - Recent window is NEVER imputed (preserves real outage detection)
 - Imputation count is tracked in output (`baseline_imputed_days`)
 
+#### 3.5.4 Baseline Fallback (Ratio vs Non-Ratio Handling)
+
+The fallback logic now distinguishes between **ratio KPIs** (percentages like RRC SR, Drop Rate, HO SR) and **non-ratio KPIs** (volumes like Traffic, Throughput):
+
+**For ratio KPIs:**
+- **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
+- **Zero baseline** (actual 0%): use `0.001` directly to avoid division by zero; represents outage recovery (if recent > 0, it's improvement)
+
+**For non-ratio KPIs:**
+- **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
+- **Zero baseline** (actual 0 GB/Mbps): attempt historical fallback first → then `0.001` if no history
+
+This prevents false degradation flags when a ratio KPI has a legitimate 0% baseline.
+
 ---
 
 ## 4. Project Structure
@@ -312,34 +338,42 @@ lte_kpi_analyzer_v2/
 |
 +-- main.py                              # Application entry point
 +-- initialization.py                    # Tkinter GUI & app controller
++-- app_streamlit.py                     # Streamlit web interface
 |
 +-- KPI_Configuration.py                 # KPI definitions, rules, thresholds
 |   +-- 13 KPI configurations
-|   +-- 142 related detection rules
+|   +-- 142+ related detection rules
 |   +-- Unit classification & validation
+|   +-- is_ratio flags for percentage-aware handling
 |
 +-- main_function_for_selected_kpi.py    # Core analysis pipeline
 |   +-- Data loading & cleaning
 |   +-- Period splitting & aggregation
-|   +-- Degradation calculation
+|   +-- Degradation calculation (ratio-aware)
 |   +-- Significance testing
 |   +-- Cause detection integration
 |
 +-- combined_degraded_kpi.py             # Multi-KPI batch analysis
 |
 +-- cause_detect_functions.py            # Root cause analysis engine
-|   +-- Vectorized cause detection
+|   +-- Vectorized cause detection (ratio-aware)
 |   +-- Row-by-row fallback
 |
 +-- data_quality.py                      # Data validation & imputation
 |   +-- validate_columns()
 |   +-- compute_baseline_imputed()
+|   +-- compute_baseline_fallback_from_history()
+|   +-- apply_baseline_fallback() (ratio-aware)
 |
 +-- clean_excel_and_helpers.py           # Data cleaning utilities
 |   +-- Column name normalization
 |   +-- Smart column matching
 |   +-- Numeric cleaning
-|   +-- Degradation calculation
+|   +-- Degradation calculation (ratio-aware)
+|
++-- anomaly_detection.py                 # Last-day anomaly detection
+|   +-- Zero anomaly detection
+|   +-- Spike anomaly detection (24-day z-score baseline)
 |
 +-- Visualization_Functions.py           # Charts & dashboards
 |   +-- show_dashboard()
@@ -347,13 +381,11 @@ lte_kpi_analyzer_v2/
 |
 +-- Generate_Word_Report.py              # DOCX report generation
 |
-+-- Save_Results.py                      # CSV export functionality
++-- Save_Results.py                      # CSV/Excel export
 |
 +-- Loading_file_inputs_outputs.py       # File I/O dialogs
 |
-+-- test_data_quality.py                 # Integration tests
-+-- test_negative_filter.py              # Unit tests
-|
++-- kpi_test_utils.py                    # Test utilities
 +-- requirements.txt                     # Python dependencies
 +-- KPI_and_its_related_counters.md      # Complete KPI reference
 ```
@@ -420,6 +452,7 @@ Each KPI follows this structure:
     "category": "Traffic",                            # Classification
     "output_prefix": "dl_traffic",                    # File naming
     "min_baseline_value": 1.0,                        # Minimum baseline filter
+    "is_ratio": False,                                # True for percentage KPIs
     "related_rules": [
         {
             "feature": "(HU) Cell DL Average Throughput (Mbps)",
@@ -434,6 +467,8 @@ Each KPI follows this structure:
     ]
 }
 ```
+
+**Ratio KPIs** (`is_ratio: True`) use absolute difference in percentage points for degradation calculation and special zero-baseline handling. Non-ratio KPIs (`is_ratio: False`) use relative percentage change.
 
 ### 6.2 Adding a New KPI
 
@@ -490,7 +525,11 @@ SENTINEL_VALUES = (4294967295, 4294967294)  # Add vendor-specific markers
 ### 7.1 Starting the Application
 
 ```bash
+# Desktop GUI (Tkinter)
 python main.py
+
+# Web Interface (Streamlit)
+streamlit run LTE_RAN_KPI_Analysis_Tool/app_streamlit.py
 ```
 
 ### 7.2 GUI Overview
@@ -522,6 +561,22 @@ python main.py
 | [100%] Analysis completed.                                                   |
 +-----------------------------------------------------------------------------+
 ```
+
+### 7.2 Streamlit Web Interface
+
+The Streamlit UI provides the same analysis capabilities in a browser-based interface:
+
+**Sidebar Inputs:**
+- File upload (.xlsx/.xls) with automatic sheet detection
+- KPI selector, comparison days, threshold
+- Baseline mode (last week / 4-week rolling average)
+- Completeness and t-test toggles
+
+**Main Area Tabs:**
+1. **Degraded Cells** - Filterable table with site/cell search and degradation range slider
+2. **Charts** - Bar charts for degraded cells per KPI and root cause distribution
+3. **Trends** - Before/after line chart showing enhancement potential after removing degraded cells
+4. **Exports** - CSV and Excel download buttons
 
 ### 7.3 Analysis Workflow
 
@@ -618,21 +673,21 @@ Cells with insufficient data are saved to `data_quality_incomplete_cells.csv`:
 
 ### 9.1 Complete KPI Listing
 
-| # | KPI Name | Target Column | Direction | Threshold | Category | Rules |
-|---|----------|---------------|-----------|-----------|----------|-------|
-| 1 | DL Traffic | `(HU) DL Traffic Volume (GBytes)` | low | 30% | Traffic | 24 |
-| 2 | UL Traffic | `(HU) UL Traffic Volume (GBytes)` | low | 30% | Traffic | 13 |
-| 3 | DL Throughput | `(HU) User DL Average Throughput (Mbps)` | low | 20% | Integrity | 14 |
-| 4 | UL Throughput | `(HU) User UL Average Throughput (Mbps)` | low | 20% | Integrity | 8 |
-| 5 | RRC Setup SR | `(TE) RRC Setup SR%` | low | 5% | Accessibility | 8 |
-| 6 | ERAB Setup SR | `ERAB Setup Success Rate` | low | 5% | Accessibility | 6 |
-| 7 | Drop Rate | `E-RAB Drop Rate (E-NodeB + MME) %` | high | 20% | Retainability | 15 |
-| 8 | HO Success Rate | `HO SR% Overall` | low | 5% | Mobility | 14 |
-| 9 | Availability | `Availability` | low | 1% | Availability | 4 |
-| 10 | RACH Success Rate | `(HU) RACH Success Rate(%)` | low | 5% | Accessibility | 5 |
-| 11 | CSFB KPI | `CSFB SR%` | low | 5% | CSFB / Voice | 9 |
-| 12 | VoLTE KPIs | `BA_Voice E2E VQI` | low | 5% | VoLTE | 14 |
-| 13 | RRC Re-establishment | `RRC Reestablish Setup Success Rate(%)` | low | 10% | Mobility | 8 |
+| # | KPI Name | Target Column | Direction | Threshold | Category | Rules | Ratio |
+|---|----------|---------------|-----------|-----------|----------|-------|-------|
+| 1 | DL Traffic | `(HU) DL Traffic Volume (GBytes)` | low | 30% | Traffic | 24 | No |
+| 2 | UL Traffic | `(HU) UL Traffic Volume (GBytes)` | low | 30% | Traffic | 13 | No |
+| 3 | DL Throughput | `(HU) User DL Average Throughput (Mbps)` | low | 20% | Integrity | 14 | No |
+| 4 | UL Throughput | `(HU) User UL Average Throughput (Mbps)` | low | 20% | Integrity | 8 | No |
+| 5 | RRC Setup SR | `(TE) RRC Setup SR%` | low | 5% | Accessibility | 8 | Yes |
+| 6 | ERAB Setup SR | `ERAB Setup Success Rate` | low | 5% | Accessibility | 6 | Yes |
+| 7 | E-RAB Drop Rate | `E-RAB Drop Rate (E-NodeB + MME) %` | high | 0.5% | Retainability | 15 | Yes |
+| 8 | HO Success Rate | `HO SR% Overall` | low | 5% | Mobility | 14 | Yes |
+| 9 | Availability | `Availability` | low | 1% | Availability | 4 | Yes |
+| 10 | RACH Success Rate | `(HU) RACH Success Rate(%)` | low | 5% | Accessibility | 5 | Yes |
+| 11 | CSFB KPI | `CSFB SR%` | low | 5% | CSFB / Voice | 9 | Yes |
+| 12 | VoLTE KPIs | `BA_Voice E2E VQI` | low | 2% | VoLTE | 14 | Yes |
+| 13 | RRC Re-establishment | `RRC Reestablish Setup Success Rate(%)` | low | 10% | Mobility | 8 | Yes |
 
 ### 9.2 Feature Categories
 
@@ -818,11 +873,51 @@ The test suite validates:
 7. **Unit classification** -- dBm/dB vs. counter/percentage distinction
 8. **Backward compatibility** -- Existing KPIs unaffected by new features
 
+> **Note:** Individual test files (`test_data_quality.py`, `test_negative_filter.py`, `test_paired_comparison.py`, `test_stress.py`) have been removed. Testing utilities are consolidated in `kpi_test_utils.py`.
+
 ---
 
-## 13. Extending the System
+## 13. Recent Changes
 
-### 13.1 Adding New Counter Types
+### 13.1 Ratio-Aware Degradation (Percentage Case)
+
+Major refactor to correctly handle percentage-based KPIs vs. volume/count KPIs:
+
+- **New `is_ratio` flag** in `KPI_Configuration.py` for all percentage KPIs (RRC SR, Drop Rate, HO SR, Availability, RACH, CSFB, VoLTE, RRC Re-establishment)
+- **Degradation calculation** now uses absolute percentage-point difference for ratio KPIs instead of relative % change
+- **Baseline fallback** uses `0.001` for zero-baseline ratio KPIs (outage recovery), avoiding division-by-zero and false degradation flags
+- **Root cause detection** includes `_is_ratio_feature()` to apply correct change calculation per related counter
+
+### 13.2 Anomaly Detection Baseline Fix
+
+- `anomaly_detection.py` now **always uses the last 24 days (all weekdays)** as the historical baseline for z-score spike detection
+- Compares last-day value against the full 24-day distribution of that specific cell
+- Provides more robust detection than same-weekday matching by using all available recent history
+- Z-score thresholding remains the primary spike detection method
+
+### 13.3 Streamlit Web Dashboard
+
+New `app_streamlit.py` provides a browser-based interface:
+- File upload with automatic sheet detection
+- Single KPI and All-KPIs analysis modes
+- Interactive filters (site, cell, degradation range)
+- Tabbed results: Degraded Cells, Charts, Trends, Exports
+- Trend analysis with enhancement potential calculation
+- Direct CSV/Excel download buttons
+
+### 13.4 KPI Configuration Updates
+
+| KPI | Change | Reason |
+|-----|--------|--------|
+| **Drop Rate** → **E-RAB Drop Rate** | Renamed for clarity | Consistent naming |
+| **E-RAB Drop Rate** threshold | 20.0% → 0.5% | Drop rate is already a percentage; 0.5% is a meaningful threshold |
+| **VoLTE KPIs** threshold | 5.0% → 2.0% | VQI (1-5 scale) requires tighter threshold |
+
+---
+
+## 14. Extending the System
+
+### 14.1 Adding New Counter Types
 
 To support a new vendor's counter naming convention:
 
@@ -836,7 +931,7 @@ def normalize_column_name(col) -> str:
     return col
 ```
 
-### 13.2 Adding New Visualization
+### 14.2 Adding New Visualization
 
 ```python
 # In Visualization_Functions.py
@@ -846,7 +941,7 @@ def show_new_chart(parent_window, data, params):
     pass
 ```
 
-### 13.3 Adding Export Format
+### 14.3 Adding Export Format
 
 ```python
 # Create new module: Generate_PDF_Report.py
@@ -858,7 +953,7 @@ def generate_pdf_report(output_df, summary_df, save_path):
 from Generate_PDF_Report import generate_pdf_report
 ```
 
-### 13.4 Batch/CLI Mode
+### 14.4 Batch/CLI Mode
 
 For headless operation (no GUI):
 
@@ -882,9 +977,9 @@ output.to_csv("results.csv", index=False)
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
-### 14.1 Common Issues
+### 15.1 Common Issues
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
@@ -894,9 +989,9 @@ output.to_csv("results.csv", index=False)
 | "python-docx not installed" | Missing optional dependency | `pip install python-docx` or disable Word export |
 | "Date parsing failed" | Non-standard date format | Ensure Excel dates are proper datetime cells |
 | "Memory error" | Dataset too large | Process by cluster, increase RAM, or use chunked reading |
-| "Zero baseline value" | Division by zero in degradation calc | Check data quality, baseline period selection |
+| "Zero baseline division" | Ratio KPI with 0 baseline | System now uses 0.001 fallback for ratio KPIs |
 
-### 14.2 Debug Information
+### 15.2 Debug Information
 
 The system provides debug metadata after each analysis:
 
@@ -923,9 +1018,9 @@ DQ: 3 invalid value(s) quarantined in 'PRB'     -> Data quality action
 
 ---
 
-## 15. License & Attribution
+## 16. License & Attribution
 
-### 15.1 Project Information
+### 16.1 Project Information
 
 - **Project Name:** Data-Driven & Automation-Based RF Optimization for Modern 4G/5G Mobile Networks
 - **System Name:** LTE KPI Degradation Analyzer v2.0
@@ -934,16 +1029,17 @@ DQ: 3 invalid value(s) quarantined in 'PRB'     -> Data quality action
 - **Team:** Musketeers_Team
 - **Project Type:** Graduation Project
 
-### 15.2 Acknowledgments
+### 16.2 Acknowledgments
 
 This project was developed as part of the ITI graduation requirements. The system leverages:
 - **Pandas & NumPy** for data manipulation
 - **SciPy** for statistical testing
 - **Matplotlib** for visualization
 - **python-docx** for report generation
-- **Tkinter** for the graphical interface
+- **Tkinter** for the desktop graphical interface
+- **Streamlit** for the web-based dashboard interface
 
-### 15.3 Citation
+### 16.3 Citation
 
 If using this system in academic or professional work:
 

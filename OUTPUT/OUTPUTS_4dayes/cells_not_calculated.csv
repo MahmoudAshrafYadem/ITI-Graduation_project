@@ -1,11 +1,11 @@
 ﻿Date,Exclusion_Type,eNodeB Name,Cell Name,LocalCell Id,kpi,counter,bad_value,reason,recent_days_count,baseline_days_count,expected_recent_days,expected_baseline_days
-2026-04-21 00:00:00,Invalid counter value,LCAIN11651,LCAIN11651-3,3,Drop Rate,(HU) RRC Reestablish Ratio(%),110.0968,percentage above 100,,,,
-2026-04-24 00:00:00,Invalid counter value,LCAIN12582,LCAIN12582-1,1,Drop Rate,(HU) RRC Reestablish Ratio(%),107.6825,percentage above 100,,,,
-2026-05-01 00:00:00,Invalid counter value,LCAIN12837,LCAIN12837-3,3,Drop Rate,(HU) RRC Reestablish Ratio(%),163.0268,percentage above 100,,,,
-2026-05-02 00:00:00,Invalid counter value,LCAIN10110,LCAIN10110-1,1,Drop Rate,(HU) RRC Reestablish Ratio(%),211.36,percentage above 100,,,,
-2026-05-03 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,Drop Rate,(HU) RRC Reestablish Ratio(%),220.1866,percentage above 100,,,,
-2026-05-04 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,Drop Rate,(HU) RRC Reestablish Ratio(%),268.0431,percentage above 100,,,,
-2026-05-05 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,Drop Rate,(HU) RRC Reestablish Ratio(%),121.2784,percentage above 100,,,,
+2026-04-21 00:00:00,Invalid counter value,LCAIN11651,LCAIN11651-3,3,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),110.0968,percentage above 100,,,,
+2026-04-24 00:00:00,Invalid counter value,LCAIN12582,LCAIN12582-1,1,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),107.6825,percentage above 100,,,,
+2026-05-01 00:00:00,Invalid counter value,LCAIN12837,LCAIN12837-3,3,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),163.0268,percentage above 100,,,,
+2026-05-02 00:00:00,Invalid counter value,LCAIN10110,LCAIN10110-1,1,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),211.36,percentage above 100,,,,
+2026-05-03 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),220.1866,percentage above 100,,,,
+2026-05-04 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),268.0431,percentage above 100,,,,
+2026-05-05 00:00:00,Invalid counter value,LCAIN12251,LCAIN12251-6,6,E-RAB Drop Rate,(HU) RRC Reestablish Ratio(%),121.2784,percentage above 100,,,,
 2026-04-30 00:00:00,Invalid counter value,LCAIN14374,LCAIN14374-6,6,RACH Success Rate,(HU) RACH Success Rate(%),100.2865,percentage above 100,,,,
 2026-04-30 00:00:00,Invalid counter value,LCAIN14374,LCAIN14374-6,6,RACH Success Rate,RACH Setup Failed Number,-1.0,negative value for non-negative metric,,,,
 2026-04-30 00:00:00,Invalid counter value,LCAIN14374,LCAIN14374-6,6,RACH Success Rate,RACH Contention-Based Failures,-1.0,negative value for non-negative metric,,,,
@@ -8597,23 +8597,23 @@
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,DL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,DL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,DL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,DL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,DL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -8682,23 +8682,23 @@
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,UL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,UL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,UL Traffic,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,UL Traffic,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,UL Traffic,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,DL Throughput,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,DL Throughput,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,DL Throughput,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -9039,91 +9039,91 @@
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,ERAB Setup SR,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,ERAB Setup SR,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,ERAB Setup SR,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12522,LCAIN12522-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-7,7,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-6,6,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-5,5,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-3,3,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-2,2,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN12228,LCAIN12228-1,1,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN11980,LCAIN11980-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12897,LCAIN12897-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-8,8,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN10510,LCAIN10510-4,4,Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12898,LCAIN12898-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-7,7,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-6,6,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-5,5,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-3,3,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-2,2,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12893,LCAIN12893-1,1,Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-6,6,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-5,5,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-3,3,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-2,2,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-1,1,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-3,3,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-2,2,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12366,LCAIN12366-1,1,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-7,7,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-6,6,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-5,5,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-3,3,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-2,2,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13001,LCAIN13001-1,1,Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-7,7,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-6,6,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-5,5,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-3,3,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-2,2,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN13994,LCAIN13994-1,1,Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-7,7,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-6,6,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-5,5,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-3,3,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-2,2,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN12524,LCAIN12524-1,1,Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-7,7,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-6,6,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-5,5,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-7,7,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-6,6,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-5,5,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12522,LCAIN12522-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN12228,LCAIN12228-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN11980,LCAIN11980-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12897,LCAIN12897-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-8,8,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN10510,LCAIN10510-4,4,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12898,LCAIN12898-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12893,LCAIN12893-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),4.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12366,LCAIN12366-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13001,LCAIN13001-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,0.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN13994,LCAIN13994-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),2.0,2.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN12524,LCAIN12524-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-7,7,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-6,6,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-5,5,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,E-RAB Drop Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,HO Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,HO Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,HO Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -9211,6 +9211,7 @@
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,HO Success Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,HO Success Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,HO Success Rate,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
+,Missing or insufficient data,LCAIN10499,LCAIN10499-3,3,HO Success Rate,,,unrecoverable after fallback (recent is NaN or baseline still zero),1.0,0.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,Availability,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,Availability,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,Availability,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -9279,21 +9280,21 @@
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,Availability,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,Availability,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,Availability,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,Availability,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,Availability,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-7,7,RACH Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-6,6,RACH Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN12366,LCAIN12366-5,5,RACH Success Rate,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -10460,21 +10461,21 @@
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-3,3,RRC Re-establishment,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-2,2,RRC Re-establishment,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10545_Cow -Tagamo5,LCAIN10545-1,1,RRC Re-establishment,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,RRC Re-establishment,,,unrecoverable after fallback (recent is zero/NaN or baseline still zero),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10588,LCAIN10588-2,2,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),3.0,3.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),4.0,4.0,4.0,4.0
+,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,RRC Re-establishment,,,unrecoverable after fallback (recent is NaN or baseline still zero),3.0,3.0,4.0,4.0
