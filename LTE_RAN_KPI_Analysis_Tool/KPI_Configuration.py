@@ -329,6 +329,7 @@ KPI_CONFIGS = {
         "category": "Accessibility",
         "output_prefix": "rrc_setup_sr",
         "min_baseline_value": 90.0,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "L.RRC.ConnReq.Att", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High RRC Attempts", "reason": "RRC attempts increased.", "recommended_action": "Check RACH load, access parameters, admission control, and overload."},
             {"feature": "RRC Setup Failure Time", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "RRC Failure Increase", "reason": "RRC setup failures increased.", "recommended_action": "Check RACH failures, no reply, rejection, admission control, and radio quality."},
@@ -350,6 +351,7 @@ KPI_CONFIGS = {
         "category": "Accessibility",
         "output_prefix": "erab_setup_sr",
         "min_baseline_value": 95.0,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "L.E-RAB.AttEst", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High ERAB Attempts", "reason": "E-RAB setup attempts increased.", "recommended_action": "Check access load, service attempts, and admission control."},
             {"feature": "ERAB Setup Failure Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "ERAB Failure Increase", "reason": "E-RAB setup failures increased.", "recommended_action": "Check ERAB failure reason counters, MME, TNL, RNL, and radio resources."},
@@ -360,13 +362,14 @@ KPI_CONFIGS = {
         ],
     },
 
-    "Drop Rate": {
+    "E-RAB Drop Rate": {
         "target_kpi": "E-RAB Drop Rate (E-NodeB + MME) %",
         "bad_direction": "high",
-        "default_threshold": 20.0,
+        "default_threshold": 0.5,
         "category": "Retainability",
         "output_prefix": "drop_rate",
-        "min_baseline_value": 0.1,  # Fixed: was 0.0, now 0.1 to avoid division issues
+        "min_baseline_value": 0.1,
+        "is_ratio": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "L.E-RAB.AbnormRel", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "Abnormal Release Increase", "reason": "E-RAB abnormal releases increased.", "recommended_action": "Check drop reason counters, radio quality, HO failures, and TNL/MME causes."},
@@ -412,6 +415,7 @@ KPI_CONFIGS = {
         "category": "Mobility",
         "output_prefix": "ho_success_rate",
         "min_baseline_value": 90.0,
+        "is_ratio": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "Intra_Freq HO Prepare Failed Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "Intra-Frequency HO Preparation Failure", "reason": "Intra-frequency HO preparation failures increased.", "recommended_action": "Check neighbor relations, target cell availability, admission control, and HO prep failure reasons."},
@@ -454,6 +458,7 @@ KPI_CONFIGS = {
         "category": "Availability",
         "output_prefix": "availability",
         "min_baseline_value": 99.0,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "(HU) Cell Unavail Time (s)", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "Cell Unavailable Time Increase", "reason": "Cell unavailable time increased.", "recommended_action": "Check outage, alarms, power, transmission, and site status."},
             {"feature": "L.Cell.Unavail.Dur.Sys(s)", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "System Unavailability", "reason": "System unavailability duration increased.", "recommended_action": "Check system faults, board alarms, transmission, and eNodeB health."},
@@ -469,6 +474,7 @@ KPI_CONFIGS = {
         "category": "Accessibility",
         "output_prefix": "rach_success_rate",
         "min_baseline_value": 95.0,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "RACH Setup Failed Number", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "RACH Setup Failures", "reason": "RACH setup failures increased.", "recommended_action": "Check PRACH parameters, root sequence planning, coverage, interference, and access load."},
             {"feature": "RACH Contention-Based Failures", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "Contention-Based RACH Failure", "reason": "Contention-based RACH failures increased.", "recommended_action": "Check preamble congestion, PRACH configuration, root sequence, and access load."},
@@ -485,6 +491,7 @@ KPI_CONFIGS = {
         "category": "CSFB / Voice Accessibility",
         "output_prefix": "csfb_kpi",
         "min_baseline_value": 90.0,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "CSFB Failure Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "CSFB Failure Increase", "reason": "CSFB failure times increased.", "recommended_action": "Check CSFB failure reasons, MME/S1 signaling, RRC redirection, and target 2G/3G availability."},
             {"feature": "L.CSFB.PrepAtt", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High CSFB Preparation Attempts", "reason": "CSFB preparation attempts increased, which may increase CSFB load.", "recommended_action": "Check CSFB traffic demand, MME load, S1 signaling, and whether the increase is normal voice demand."},
@@ -508,10 +515,11 @@ KPI_CONFIGS = {
     "VoLTE KPIs": {
         "target_kpi": "BA_Voice E2E VQI",
         "bad_direction": "low",
-        "default_threshold": 5.0,
+        "default_threshold": 2.0,
         "category": "VoLTE",
         "output_prefix": "volte_kpis",
         "min_baseline_value": 3.5,
+        "is_ratio": True,
         "related_rules": [
             {"feature": "VoLTE Traffic (Erl)(Erl)", "bad_direction": "low", "threshold": 20, "severity": 3, "category": "VoLTE Traffic Drop", "reason": "VoLTE traffic decreased.", "recommended_action": "Check VoLTE user demand, IMS service, VoLTE coverage, and QCI-1 traffic."},
             {"feature": "L.Traffic.User.VoIP.Avg", "bad_direction": "low", "threshold": 20, "severity": 2, "category": "VoIP User Drop", "reason": "Average VoIP users decreased.", "recommended_action": "Check VoLTE traffic demand, service availability, and IMS registration behavior."},
@@ -549,7 +557,8 @@ KPI_CONFIGS = {
         "default_threshold": 10.0,
         "category": "Mobility",
         "output_prefix": "rrc_reestablishment",
-        "min_baseline_value": 90.0,  # Fixed: 80% baseline is already degraded; healthy is >95%
+        "min_baseline_value": 90.0,
+        "is_ratio": True,  # Fixed: 80% baseline is already degraded; healthy is >95%
         "related_rules": [
             {"feature": "RRC Reestablish Failures(times)", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "Re-establishment Failure", "reason": "RRC re-establishment failures increased.", "recommended_action": "Check RLF causes, coverage, and re-establishment parameters."},
             {"feature": "L.RRC.ReEstFail.NoReply", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "Re-establishment No Reply", "reason": "No reply during re-establishment.", "recommended_action": "Check target cell coverage and signaling."},

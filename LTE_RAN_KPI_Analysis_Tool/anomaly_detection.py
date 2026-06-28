@@ -3,14 +3,15 @@
 # ============================================================
 # Detects KPI anomalies on the LAST DAY of the recent period:
 #   1. Zero anomaly: KPI value is 0 on last day, but was consistently
-#      non-zero in the historical lookback window.
+#      non-zero in the last 24 days.
 #   2. Spike anomaly: KPI value on last day is abnormally different
-#      from the historical baseline.
+#      from the 24-day historical baseline.
 #
-# HISTORICAL BASELINE LOGIC (matches main degradation analysis):
-#   - lookback_weeks=1: Use the SAME WEEKDAY from 1 week ago (1 sample)
-#   - lookback_weeks=4: Use the MEDIAN of same-weekday values from
-#                       the previous 4 weeks (up to 4 samples)
+# HISTORICAL BASELINE LOGIC:
+#   - Uses ALL DAYS from the previous 24 days (not same-weekday matching)
+#   - Z-score: (value - median) / std of the last 24 days
+#   - Requires at least 2 samples for z-score; falls back to % change
+#     with 1 sample
 #
 # Output: Excel file with 4 sheets (All, Zero, Spike, Summary) or CSV.
 # ============================================================
@@ -41,22 +42,23 @@ def date_first(df):
 
 
 # ------------------------------------------------------------
-# Historical baseline computation (same-weekday matching)
+# Historical baseline computation (last N days, all weekdays)
 # ------------------------------------------------------------
-def _get_same_weekday_historical_values(
+def _get_last_n_days_historical_values(
     df_full,
     target_kpi,
     cell_cols,
     date_col,
     target_date,
-    lookback_weeks,
+    lookback_days,
     cell_values,
 ):
     """
-    Collect same-weekday historical values for a cell on a target date.
+    Collect ALL historical values for a cell within the last N days.
 
-    For lookback_weeks=1: returns value from same weekday 7 days ago.
-    For lookback_weeks=N: returns values from same weekday across N weeks.
+    Used for z-score spike/zero anomaly detection: compares last-day value
+    against the full distribution of values from the previous N days
+    (regardless of weekday).
 
     Args:
         df_full: Full DataFrame with all history.
@@ -64,22 +66,19 @@ def _get_same_weekday_historical_values(
         cell_cols: List of cell identifier columns.
         date_col: Name of date column.
         target_date: The date we're checking (last day).
-        lookback_weeks: How many weeks back to look.
+        lookback_days: How many days back to look (e.g., 24 for ~4 weeks).
         cell_values: Tuple of cell identifier values.
 
     Returns:
-        List of historical values (same weekday, from previous weeks).
+        List of historical values from the last N days.
     """
     target_date = pd.Timestamp(target_date).normalize()
-    target_weekday = target_date.weekday()
 
-    # Build the list of lookback dates (same weekday, previous N weeks)
-    lookback_dates = []
-    for week in range(1, lookback_weeks + 1):
-        lookback_date = target_date - pd.Timedelta(days=7 * week)
-        lookback_dates.append(lookback_date)
+    lookback_dates = [
+        target_date - pd.Timedelta(days=day)
+        for day in range(1, lookback_days + 1)
+    ]
 
-    # Filter to rows matching the cell + lookback dates
     cell_filter = True
     for col, val in zip(cell_cols, cell_values):
         cell_filter = cell_filter & (df_full[col] == val)
@@ -87,7 +86,6 @@ def _get_same_weekday_historical_values(
     cell_history = df_full[cell_filter].copy()
     cell_history[date_col] = pd.to_datetime(cell_history[date_col]).dt.normalize()
 
-    # Collect values from same-weekday dates
     values = []
     for ld in lookback_dates:
         day_data = cell_history[cell_history[date_col] == ld]
@@ -114,21 +112,20 @@ def detect_kpi_anomalies_last_day(
     """
     Detect KPI anomalies (zero values and spikes) on the LAST DAY of the data.
 
-    Historical baseline uses SAME-WEEKDAY matching (consistent with the main
-    degradation analysis):
-      - lookback_weeks=1: compare against value from same weekday 1 week ago
-      - lookback_weeks=4: compare against MEDIAN of same-weekday values from
-                          previous 4 weeks
+    Historical baseline uses ALL DAYS from the previous 4 weeks (24 days):
+      - Compares last-day value against the full distribution of the last 24 days
+      - Uses z-score (|value - median| / std) for spike detection
+      - Requires at least 2 historical samples for z-score; falls back to
+        absolute % change when only 1 sample is available
 
     Two types of anomalies are detected:
       1. Zero anomaly: KPI value is exactly 0 on the last day, but historical
-         values were consistently non-zero (counter reset, cell outage,
-         vendor export gap).
+         values in the last 24 days were consistently non-zero.
       2. Spike anomaly: KPI value on the last day differs significantly from
-         the historical same-weekday baseline.
+         the 24-day historical baseline.
 
     Spike detection method depends on available samples:
-      - With 1 sample (lookback_weeks=1): use absolute % change threshold
+      - With 1 sample: use absolute % change threshold
         (|value - history| / |history|) >= spike_pct_threshold/100
       - With 2+ samples: use z-score (|value - median| / std) >=
         spike_z_threshold
@@ -138,15 +135,13 @@ def detect_kpi_anomalies_last_day(
             CELL_ID_COLS, plus the KPI columns defined in KPI_CONFIGS).
         output_path: Path to save one file containing all anomaly types.
             If None, the DataFrame is returned but not saved.
-        lookback_weeks: Number of weeks back to look for the same weekday.
-            Default 4 (matches 4week_rolling_avg baseline mode).
-            Use 1 to match last_week baseline mode.
+         lookback_weeks: Kept for backward compatibility; always uses 4 weeks.
         spike_z_threshold: Absolute z-score threshold for spike detection
             (used when 2+ historical samples are available).
             Default 3.0 (≈99.7% confidence if normally distributed).
         spike_pct_threshold: Absolute percentage change threshold for spike
-            detection (used when only 1 historical sample is available,
-            i.e., lookback_weeks=1). Default 50.0 (50% change).
+             detection (used when only 1 historical sample is available).
+             Default 50.0 (50% change).
         min_history_samples: Minimum number of valid historical samples
             required before an anomaly can be flagged. Default 1.
         log_callback: Optional function for progress logging.
@@ -158,16 +153,16 @@ def detect_kpi_anomalies_last_day(
         - KPI_Name (config name, e.g. "DL Traffic")
         - KPI_Column (actual column name in DataFrame)
         - Value (last day value)
-        - Historical_Median (median of same-weekday values)
-        - Historical_Mean (mean of same-weekday values, for reference)
-        - Historical_Std (std of same-weekday values; NaN if only 1 sample)
+        - Historical_Median (median of last 24 days values)
+        - Historical_Mean (mean of last 24 days values, for reference)
+        - Historical_Std (std of last 24 days values; NaN if only 1 sample)
         - Historical_Days (count of valid historical samples)
         - Anomaly_Type ('Zero' or 'Spike')
         - Z_Score (for spike with 2+ samples; NaN otherwise)
         - Pct_Change (for spike with 1 sample; NaN otherwise)
         - Direction ('high' or 'low')
         - Severity (Critical / High / Medium / Low)
-        - Baseline_Mode ('last_week' if lookback_weeks=1, else '4week_rolling_avg')
+        - Baseline_Mode ('4week_rolling_avg')
         - Description (human-readable summary)
     """
     def log_msg(msg):
@@ -181,17 +176,11 @@ def detect_kpi_anomalies_last_day(
     # ---- Validate lookback_weeks ----
     if lookback_weeks < 1:
         raise ValueError("lookback_weeks must be >= 1")
-    if lookback_weeks == 1:
-        baseline_mode_label = "last_week"
-    else:
-        baseline_mode_label = f"{lookback_weeks}week_rolling_avg"
+    baseline_mode_label = "4week_rolling_avg"
 
     log_msg(f"Baseline mode: {baseline_mode_label}")
-    log_msg(f"  → Looking back {lookback_weeks} week(s) for SAME WEEKDAY values")
-    if lookback_weeks == 1:
-        log_msg(f"  → Spike detection: % change (threshold: {spike_pct_threshold}%)")
-    else:
-        log_msg(f"  → Spike detection: z-score (threshold: {spike_z_threshold})")
+    log_msg(f"  → Looking back 4 weeks for SAME WEEKDAY values (spike detection)")
+    log_msg(f"  → Spike detection: z-score (threshold: {spike_z_threshold}, requires 4 weeks history)")
 
     # ---- Prepare data ----
     df = clean_excel_columns(df.copy())
@@ -228,7 +217,7 @@ def detect_kpi_anomalies_last_day(
         if kpi_col in df.columns:
             df[kpi_col] = clean_numeric_series(df[kpi_col])
 
-    # ---- Split data: last day vs full history (for same-weekday lookup) ----
+    # ---- Split data: last day vs full history (for 24-day lookup) ----
     last_day_df = df[df[DATE_COL] == last_date].copy()
 
     log_msg(f"Last day records: {len(last_day_df)}")
@@ -267,15 +256,15 @@ def detect_kpi_anomalies_last_day(
 
             last_value = float(last_value_raw)
 
-            # ---- Get same-weekday historical values ----
+            # ---- Get last 24 days historical values (all weekdays) ----
             cell_values = tuple(cell_row[col] for col in CELL_ID_COLS)
-            history_values = _get_same_weekday_historical_values(
+            history_values = _get_last_n_days_historical_values(
                 df_full=df,
                 target_kpi=kpi_col,
                 cell_cols=CELL_ID_COLS,
                 date_col=DATE_COL,
                 target_date=last_date,
-                lookback_weeks=lookback_weeks,
+                lookback_days=24,
                 cell_values=cell_values,
             )
 
@@ -323,9 +312,9 @@ def detect_kpi_anomalies_last_day(
                         "Baseline_Mode": baseline_mode_label,
                         "Description": (
                             f"KPI dropped to 0 on last day "
-                            f"(same-weekday historical median: {hist_median:.2f}, "
-                            f"{len(non_zero_history)}/{hist_days} weeks were non-zero "
-                            f"in {lookback_weeks}-week lookback)"
+                            f"(24-day historical median: {hist_median:.2f}, "
+                            f"{len(non_zero_history)}/{hist_days} days were non-zero "
+                            f"in 24-day lookback)"
                         ),
                     })
                     # Don't also flag as spike — zero is its own anomaly
@@ -397,19 +386,19 @@ def detect_kpi_anomalies_last_day(
                     else:
                         severity = "Low"
 
-                # Build description
-                if hist_days == 1:
-                    desc = (
-                        f"KPI spike on last day: value={last_value:.2f} vs "
-                        f"same-weekday last-week value={history_values[0]:.2f} "
-                        f"(change={pct_change:+.1f}%, impact={impact}, method={spike_method})"
-                    )
-                else:
-                    desc = (
-                        f"KPI spike on last day: value={last_value:.2f} vs "
-                        f"same-weekday {hist_days}-week median={hist_median:.2f} "
-                        f"(z-score={z_score:+.2f}, impact={impact}, method={spike_method})"
-                    )
+                 # Build description
+                 if hist_days == 1:
+                     desc = (
+                         f"KPI spike on last day: value={last_value:.2f} vs "
+                          f"historical value={history_values[0]:.2f} "
+                         f"(change={pct_change:+.1f}%, impact={impact}, method={spike_method})"
+                     )
+                 else:
+                     desc = (
+                         f"KPI spike on last day: value={last_value:.2f} vs "
+                         f"24-day median={hist_median:.2f} "
+                         f"(z-score={z_score:+.2f}, impact={impact}, method={spike_method})"
+                     )
 
                 anomalies.append({
                     **{col: cell_row[col] for col in CELL_ID_COLS},
@@ -459,7 +448,7 @@ def detect_kpi_anomalies_last_day(
     log_msg("ANOMALY DETECTION SUMMARY")
     log_msg("=" * 60)
     log_msg(f"Last day analyzed: {last_date.date()} ({last_weekday_name})")
-    log_msg(f"Baseline mode: {baseline_mode_label} ({lookback_weeks} week(s))")
+    log_msg(f"Baseline mode: {baseline_mode_label} (4 weeks)")
     log_msg(f"Cells checked: {len(last_day_cells)}")
     log_msg(f"KPI × cell checks performed: {kpis_checked}")
     log_msg(f"Total anomalies found: {len(anomalies_df)}")
@@ -516,7 +505,7 @@ def _save_anomalies_to_file(anomalies_df, output_path, last_date,
                 "Last_Day_Analyzed": [last_date],
                 "Last_Day_Weekday": [last_date.strftime("%A")],
                 "Baseline_Mode": [baseline_mode_label],
-                "Lookback_Weeks": [lookback_weeks],
+                "Lookback_Weeks": [4],
                 "Total_Anomalies": [len(anomalies_df)],
                 "Zero_Anomalies": [len(zero_df)],
                 "Spike_Anomalies": [len(spike_df)],

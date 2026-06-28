@@ -119,27 +119,42 @@ def clean_numeric_series(series: pd.Series) -> pd.Series:
 # CALCULATION FUNCTIONS
 # ============================================================
 
-def calculate_degradation(recent_value, baseline_value, bad_direction):
+def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=False):
     """
     Calculate degradation percentage.
-    
+
     Positive result means degradation (worse performance).
-    
+
+    For ratio KPIs (RRC SR %, Drop Rate %, HO SR %, etc.):
+        - Values are already percentages (e.g., 99.5%)
+        - Degradation = absolute difference in percentage points
+        - (recent - base) or (base - recent) depending on bad_direction
+
+    For non-ratio KPIs (Traffic, Throughput, etc.):
+        - Degradation = ((baseline - recent) / baseline) * 100
+
     Args:
         recent_value: Current period value
         baseline_value: Baseline period value
         bad_direction: 'low' or 'high' - direction that indicates worse performance
-        
+        is_ratio: True for ratio KPIs (percentage values), False for volume/count KPIs
+
     Returns:
         Degradation percentage (positive = worse), or np.nan if cannot calculate
     """
     if pd.isna(recent_value) or pd.isna(baseline_value):
         return np.nan
-    if baseline_value == 0:
-        return np.nan
     if bad_direction == "low":
+        if is_ratio:
+            return baseline_value - recent_value
+        if baseline_value == 0:
+            return np.nan
         return ((baseline_value - recent_value) / baseline_value) * 100
     if bad_direction == "high":
+        if is_ratio:
+            return recent_value - baseline_value
+        if baseline_value == 0:
+            return np.nan
         return ((recent_value - baseline_value) / baseline_value) * 100
     return np.nan
 
