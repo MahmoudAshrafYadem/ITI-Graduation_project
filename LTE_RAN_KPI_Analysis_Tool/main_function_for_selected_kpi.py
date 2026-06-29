@@ -370,25 +370,25 @@ def analyze_selected_kpi(
                     comparison.at[idx, "days_compared"] = comparison.at[idx, "recent_days_count"]
 
     # ---- Post-fallback exclusion: only drop cells that are truly unrecoverable ----
-    # After the fallback, baseline_avg_kpi should be > 0 for all cells
-    # (either from observation, historical median, or min_baseline_value).
-    # The only cells we still cannot analyze are those where recent is also
-    # NaN — no recent traffic means no degradation ratio to compute.
+    # A cell is unrecoverable only if recent OR baseline is still NaN after
+    # all fallback attempts (meaning no measurement exists at all).
+    # A value of 0 is a valid real measurement (e.g., outage, 0% SR) and
+    # must be kept for degradation calculation. Do NOT conflate NaN with 0.
     if not comparison.empty:
-        recent_is_zero = comparison["recent_avg_kpi"].fillna(0) == 0
-        baseline_still_zero = comparison["baseline_avg_kpi"].fillna(0) == 0
-        unrecoverable = recent_is_zero | baseline_still_zero
+        recent_is_nan = comparison["recent_avg_kpi"].isna()
+        baseline_is_nan = comparison["baseline_avg_kpi"].isna()
+        unrecoverable = recent_is_nan | baseline_is_nan
         if unrecoverable.any():
             _record(
                 comparison[unrecoverable],
-                "unrecoverable after fallback (recent is NaN or baseline still zero)"
+                "unrecoverable after fallback (recent or baseline is NaN)"
             )
             comparison = comparison[~unrecoverable].copy()
             log_msg(
                 f"INFO: {int(unrecoverable.sum())} cells excluded - "
                 f"unrecoverable after baseline fallback "
-                f"(recent_zero={int(recent_is_zero.sum())}, "
-                f"baseline_still_zero={int(baseline_still_zero.sum())})"
+                f"(recent_nan={int(recent_is_nan.sum())}, "
+                f"baseline_nan={int(baseline_is_nan.sum())})"
             )
 
     # No min_baseline_value exclusion anymore (fallback handles it)

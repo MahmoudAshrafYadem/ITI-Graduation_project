@@ -19,11 +19,10 @@
 9. [KPI Configuration Reference](#9-kpi-configuration-reference)
 10. [Root Cause Analysis Engine](#10-root-cause-analysis-engine)
 11. [Visualization & Reporting](#11-visualization--reporting)
-12. [Testing & Validation](#12-testing--validation)
-13. [Recent Changes](#13-recent-changes)
-14. [Extending the System](#14-extending-the-system)
-15. [Troubleshooting](#15-troubleshooting)
-16. [License & Attribution](#16-license--attribution)
+12. [Recent Changes](#12-recent-changes)
+13. [Extending the System](#13-extending-the-system)
+13. [Troubleshooting](#14-troubleshooting)
+15. [License & Attribution](#15-license--attribution)
 
 ---
 
@@ -271,8 +270,13 @@ t_stat, p_value = scipy.stats.ttest_ind(
 Each detected cause receives a **score** for ranking:
 
 ```
-Score = Degradation_Percentage x Severity_Level
+Score = ChangeValue x Severity_Level
 ```
+
+**Note:** The unit of `ChangeValue` depends on the feature type:
+- For **dB/dBm** features (RSRP, RIN, interference): absolute difference in **dB**
+- For **ratio/percentage** features (RRC SR%, Drop Rate%, PRB%): absolute difference in **percentage points**
+- For **counters/volumes** (attempts, GBytes, Mbps): relative **percentage change** `((baseline - recent) / baseline) × 100`
 
 | Severity | Level | Examples |
 |----------|-------|----------|
@@ -321,13 +325,13 @@ The fallback logic now distinguishes between **ratio KPIs** (percentages like RR
 
 **For ratio KPIs:**
 - **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
-- **Zero baseline** (actual 0%): use `0.001` directly to avoid division by zero; represents outage recovery (if recent > 0, it's improvement)
+- **Zero baseline** (actual 0%): pass through as `0` — the signed-difference formula has no denominator, so zero is safe and correctly represents outage recovery (if recent > 0, it's improvement; if recent = 0, degradation is 0)
 
 **For non-ratio KPIs:**
 - **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
 - **Zero baseline** (actual 0 GB/Mbps): attempt historical fallback first → then `0.001` if no history
 
-This prevents false degradation flags when a ratio KPI has a legitimate 0% baseline.
+This ensures ratio KPIs with a legitimate 0% baseline are evaluated correctly without artificial floor values.
 
 ---
 
@@ -724,18 +728,26 @@ def find_degradation_causes_vectorized(df, rules):
 
     # 2. For each rule, vectorized numpy operations
     for rule in rules:
-        # Calculate change percentage for ALL cells at once
-        change_pct = np.where(
-            baseline_values != 0,
-            ((recent - baseline) / baseline) * 100,
-            np.nan
-        )
+        feature = rule["feature"]
+        unit = classify_unit(feature)       # 'dbm' | 'db' | 'pct' | 'nonneg'
+        is_ratio = _is_ratio_feature(feature)
+
+        # Routing: dB/dBm and ratio features use signed difference (no denominator);
+        # everything else uses relative percentage change.
+        if unit in ('dbm', 'db') or is_ratio:
+            if rule["bad_direction"] == "low":
+                change_pct = baseline_values - recent_values   # positive = degraded
+            else:  # high
+                change_pct = recent_values - baseline_values   # positive = degraded
+        else:
+            # Non-ratio, non-dB: relative % change
+            change_pct = ((recent - baseline) / baseline) * 100
 
         # Vectorized threshold mask
-        mask = change_pct >= threshold
+        mask = change_pct >= rule["threshold"]
 
         # Severity-weighted scoring
-        score = change_pct * severity
+        score = change_pct * rule["severity"]
 
     # 3. Aggregate per cell, sort by score
     # 4. Return top cause + top 5 all causes
@@ -819,83 +831,29 @@ RF Optimization Analysis Report
 
 ---
 
-## 12. Testing & Validation
 
-### 12.1 Test Suite
+## 12. Recent Changes
 
-| Test File | Purpose | Coverage |
-|-----------|---------|----------|
-| `test_data_quality.py` | Integration tests | Validation, imputation, end-to-end |
-| `test_negative_filter.py` | Unit tests | Unit classification, negative filtering |
+### 12.1 Unit-Aware Change Calculation & Baseline Handling
 
-### 12.2 Running Tests
+Major refactor to correctly handle different metric units in root cause detection and baseline fallback:
 
-```bash
-# Run all tests
-python test_data_quality.py
-python test_negative_filter.py
+- **Unit-aware routing** in `cause_detect_functions.py`: `classify_unit()` routes each related counter to the correct calculation:
+  - **dB/dBm** features (RSRP, RSRQ, SINR, interference): signed absolute difference in dB — avoids sign flip from negative baselines
+  - **Ratio/percentage** features (RRC SR%, Drop Rate%, PRB%): signed absolute difference in percentage points
+  - **Counters/volumes** (attempts, GBytes, Mbps): relative percentage change `((baseline - recent) / baseline) × 100`
+- **Baseline fallback simplified for ratio KPIs**: zero baseline now passes through as `0` directly — signed difference has no denominator, so `0` is safe and correctly represents outage recovery. Removed vestigial `0.001` substitution for ratio KPIs.
+- **Post-fallback exclusion fixed**: cells with `recent_avg_kpi = 0` or `baseline_avg_kpi = 0` are no longer conflated with missing data (`.isna()` check only). Genuine outages (e.g., SR = 0%, Traffic = 0 GB) now pass through to degradation calculation instead of being silently dropped.
+- **Root cause detection** updated in both vectorized and row-fallback paths to use the new routing logic.
 
-# Expected output (test_data_quality.py):
-# [PASS] negative counter quarantined
-# [PASS] sentinel quarantined
-# [PASS] percentage>100 quarantined
-# [PASS] bad values nulled in returned frame
-# [PASS] missing baseline day imputed from 4-week median
-# [PASS] imputed day counted
-# [PASS] A and B degraded, C excluded
-# [PASS] Cell-B shows imputed baseline day
-# [PASS] invalid PRB recorded in quarantine_df
-# [PASS] Cell-C recorded in incomplete_df
-# [PASS] analyze_all_kpis returns 5 items
-# RESULT: 11 passed, 0 failed
-
-# Expected output (test_negative_filter.py):
-# [PASS] All current targets keep >=0 filtering (no behavior change)
-# [PASS] dBm target recognized as negative-allowed
-# [PASS] dB target recognized as negative-allowed
-# [PASS] Interference feature recognized
-# [PASS] OLD logic destroyed all negative dBm rows
-# [PASS] NEW logic preserved all negative dBm rows
-# [PASS] Counter target still drops the impossible negative
-# [PASS] main_function_for_selected_kpi imports and exposes analyze_selected_kpi
-# RESULT: 8 passed, 0 failed
-```
-
-### 12.3 Test Scenarios
-
-The test suite validates:
-1. **Negative counter quarantining** -- Invalid negative values in non-negative metrics
-2. **Sentinel detection** -- Vendor null markers (4294967295)
-3. **Percentage bounds** -- Values outside [0, 100] for % metrics
-4. **Baseline imputation** -- Same-weekday median filling
-5. **End-to-end degradation** -- Complete pipeline with degraded/normal cells
-6. **Incomplete handling** -- Cells with missing days properly excluded
-7. **Unit classification** -- dBm/dB vs. counter/percentage distinction
-8. **Backward compatibility** -- Existing KPIs unaffected by new features
-
-> **Note:** Individual test files (`test_data_quality.py`, `test_negative_filter.py`, `test_paired_comparison.py`, `test_stress.py`) have been removed. Testing utilities are consolidated in `kpi_test_utils.py`.
-
----
-
-## 13. Recent Changes
-
-### 13.1 Ratio-Aware Degradation (Percentage Case)
-
-Major refactor to correctly handle percentage-based KPIs vs. volume/count KPIs:
-
-- **New `is_ratio` flag** in `KPI_Configuration.py` for all percentage KPIs (RRC SR, Drop Rate, HO SR, Availability, RACH, CSFB, VoLTE, RRC Re-establishment)
-- **Degradation calculation** now uses absolute percentage-point difference for ratio KPIs instead of relative % change
-- **Baseline fallback** uses `0.001` for zero-baseline ratio KPIs (outage recovery), avoiding division-by-zero and false degradation flags
-- **Root cause detection** includes `_is_ratio_feature()` to apply correct change calculation per related counter
-
-### 13.2 Anomaly Detection Baseline Fix
+### 12.2 Anomaly Detection Baseline Fix
 
 - `anomaly_detection.py` now **always uses the last 24 days (all weekdays)** as the historical baseline for z-score spike detection
 - Compares last-day value against the full 24-day distribution of that specific cell
 - Provides more robust detection than same-weekday matching by using all available recent history
 - Z-score thresholding remains the primary spike detection method
 
-### 13.3 Streamlit Web Dashboard
+### 12.3 Streamlit Web Dashboard
 
 New `app_streamlit.py` provides a browser-based interface:
 - File upload with automatic sheet detection
@@ -905,7 +863,7 @@ New `app_streamlit.py` provides a browser-based interface:
 - Trend analysis with enhancement potential calculation
 - Direct CSV/Excel download buttons
 
-### 13.4 KPI Configuration Updates
+### 12.4 KPI Configuration Updates
 
 | KPI | Change | Reason |
 |-----|--------|--------|
@@ -915,9 +873,9 @@ New `app_streamlit.py` provides a browser-based interface:
 
 ---
 
-## 14. Extending the System
+## 13. Extending the System
 
-### 14.1 Adding New Counter Types
+### 13.1 Adding New Counter Types
 
 To support a new vendor's counter naming convention:
 
@@ -931,7 +889,7 @@ def normalize_column_name(col) -> str:
     return col
 ```
 
-### 14.2 Adding New Visualization
+### 13.2 Adding New Visualization
 
 ```python
 # In Visualization_Functions.py
@@ -941,7 +899,7 @@ def show_new_chart(parent_window, data, params):
     pass
 ```
 
-### 14.3 Adding Export Format
+### 13.3 Adding Export Format
 
 ```python
 # Create new module: Generate_PDF_Report.py
@@ -953,7 +911,7 @@ def generate_pdf_report(output_df, summary_df, save_path):
 from Generate_PDF_Report import generate_pdf_report
 ```
 
-### 14.4 Batch/CLI Mode
+### 13.4 Batch/CLI Mode
 
 For headless operation (no GUI):
 
@@ -977,9 +935,9 @@ output.to_csv("results.csv", index=False)
 
 ---
 
-## 15. Troubleshooting
+## 14. Troubleshooting
 
-### 15.1 Common Issues
+### 14.1 Common Issues
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
@@ -989,9 +947,9 @@ output.to_csv("results.csv", index=False)
 | "python-docx not installed" | Missing optional dependency | `pip install python-docx` or disable Word export |
 | "Date parsing failed" | Non-standard date format | Ensure Excel dates are proper datetime cells |
 | "Memory error" | Dataset too large | Process by cluster, increase RAM, or use chunked reading |
-| "Zero baseline division" | Ratio KPI with 0 baseline | System now uses 0.001 fallback for ratio KPIs |
+| "Zero baseline division" | Ratio KPI with 0 baseline | System passes through 0 directly for ratio KPIs (signed difference has no denominator); non-ratio KPIs use history fallback first, then 0.001 |
 
-### 15.2 Debug Information
+### 14.2 Debug Information
 
 The system provides debug metadata after each analysis:
 
@@ -1018,9 +976,9 @@ DQ: 3 invalid value(s) quarantined in 'PRB'     -> Data quality action
 
 ---
 
-## 16. License & Attribution
+## 15. License & Attribution
 
-### 16.1 Project Information
+### 15.1 Project Information
 
 - **Project Name:** Data-Driven & Automation-Based RF Optimization for Modern 4G/5G Mobile Networks
 - **System Name:** LTE KPI Degradation Analyzer v2.0
@@ -1029,7 +987,7 @@ DQ: 3 invalid value(s) quarantined in 'PRB'     -> Data quality action
 - **Team:** Musketeers_Team
 - **Project Type:** Graduation Project
 
-### 16.2 Acknowledgments
+### 15.2 Acknowledgments
 
 This project was developed as part of the ITI graduation requirements. The system leverages:
 - **Pandas & NumPy** for data manipulation
@@ -1039,7 +997,7 @@ This project was developed as part of the ITI graduation requirements. The syste
 - **Tkinter** for the desktop graphical interface
 - **Streamlit** for the web-based dashboard interface
 
-### 16.3 Citation
+### 15.3 Citation
 
 If using this system in academic or professional work:
 

@@ -371,18 +371,6 @@ def apply_baseline_fallback(
     if log_callback:
         log_callback(f"Attempting baseline fallback for {n_needs_fallback} cells with NaN baseline")
 
-    # For ratio KPIs with zero baseline, use 0.001 directly (no historical fallback)
-    # This represents outage recovery: if base=0 and recent>0, it's improvement
-    if is_ratio:
-        zero_mask = is_zero
-        if zero_mask.any():
-            comparison_df.loc[zero_mask, 'baseline_avg_kpi'] = 0.001
-            comparison_df.loc[zero_mask, 'baseline_fallback_used'] = True
-            comparison_df.loc[zero_mask, 'baseline_fallback_source'] = 'zero_fixed'
-            comparison_df.loc[zero_mask, 'baseline_fallback_value'] = 0.001
-            if log_callback:
-                log_callback(f"  - {zero_mask.sum()} cells with zero baseline: using 0.001 (outage recovery)")
-
     # For NaN baseline, try historical fallback
     nan_mask = is_nan & needs_fallback
     if nan_mask.any():

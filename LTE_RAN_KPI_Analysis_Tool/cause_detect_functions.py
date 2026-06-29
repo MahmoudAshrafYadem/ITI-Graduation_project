@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import re
 
-from KPI_Configuration import CELL_ID_COLS, SITE_COL, CELL_COL, DATE_COL
+from KPI_Configuration import CELL_ID_COLS, SITE_COL, CELL_COL, DATE_COL, classify_unit
 from clean_excel_and_helpers import (
     clean_excel_columns,
     clean_numeric_series,
@@ -69,12 +69,14 @@ def find_degradation_causes_vectorized(df, rules):
         bad_direction = rule["bad_direction"]
         threshold = rule["threshold"]
         severity = rule.get("severity", 3)
+        unit = classify_unit(feature)
         is_ratio = _is_ratio_feature(feature)
+        use_signed_diff = (unit in ('dbm', 'db')) or is_ratio
         
         # Vectorized calculation using numpy arrays
         with np.errstate(divide='ignore', invalid='ignore'):
-            if is_ratio:
-                # Ratio KPIs: absolute difference in percentage points
+            if use_signed_diff:
+                # Signed difference — for dB/dBm and ratio/percentage features
                 if bad_direction == "low":
                     change_pct = np.where(
                         np.isfinite(recent_values) & np.isfinite(baseline_values),
@@ -88,7 +90,7 @@ def find_degradation_causes_vectorized(df, rules):
                         np.nan
                     )
             else:
-                # Non-ratio KPIs: percentage change
+                # Non-ratio non-db: relative % change
                 if bad_direction == "low":
                     change_pct = np.where(
                         baseline_values != 0,
@@ -219,7 +221,7 @@ def find_degradation_causes_row(row, rules):
             recent_value,
             baseline_value,
             rule["bad_direction"],
-            is_ratio=_is_ratio_feature(feature),
+            is_ratio=(classify_unit(feature) in ('dbm', 'db')) or _is_ratio_feature(feature),
         )
         
         if pd.isna(change_pct):
