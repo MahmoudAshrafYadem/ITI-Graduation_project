@@ -34,6 +34,7 @@ from clean_excel_and_helpers import (
     calculate_degradation,
     perform_ttest,
     get_periods_enhanced,
+    DEGRADATION_PCT_CAP,
 )
 from cause_detect_functions import (
     find_degradation_causes_vectorized,

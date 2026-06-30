@@ -119,6 +119,17 @@ def clean_numeric_series(series: pd.Series) -> pd.Series:
 # CALCULATION FUNCTIONS
 # ============================================================
 
+# Symmetric cap (in %) for the non-ratio relative-change metric. A near-zero
+# (but strictly positive) baseline makes ((base - recent)/base)*100 explode —
+# e.g. a 0.0096 GB baseline can produce -8743%, a pure denominator artifact
+# that then dominates the mean/max degradation statistics (residual of BUG-04).
+# We winsorize to +/- this bound. It sits far above any real degradation (the
+# degradation threshold is single/double digits), so genuine outages (+100%)
+# and every degraded classification are untouched; only the explosive artifact
+# tails are clipped.
+DEGRADATION_PCT_CAP = 1000.0
+
+
 def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=False):
     """
     Calculate degradation percentage.
@@ -149,13 +160,15 @@ def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=
             return baseline_value - recent_value
         if baseline_value == 0:
             return np.nan
-        return ((baseline_value - recent_value) / baseline_value) * 100
+        deg = ((baseline_value - recent_value) / baseline_value) * 100
+        return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
     if bad_direction == "high":
         if is_ratio:
             return recent_value - baseline_value
         if baseline_value == 0:
             return np.nan
-        return ((recent_value - baseline_value) / baseline_value) * 100
+        deg = ((recent_value - baseline_value) / baseline_value) * 100
+        return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
     return np.nan
 
 
