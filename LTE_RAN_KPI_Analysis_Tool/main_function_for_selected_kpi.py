@@ -458,17 +458,31 @@ def analyze_selected_kpi(
 
     # Significance test on OBSERVED values only
     if enable_significance_test and not comparison.empty:
-        results = []
-        for idx, row in comparison.iterrows():
-            cid = (row[SITE_COL], row[CELL_COL])
-            cr = recent_df[(recent_df[SITE_COL] == cid[0]) & (recent_df[CELL_COL] == cid[1])][target_kpi]
-            cb = baseline_obs_df[(baseline_obs_df[SITE_COL] == cid[0]) & (baseline_obs_df[CELL_COL] == cid[1])][target_kpi]
+        # Group observed recent/baseline values by the FULL cell identity
+        # (eNodeB Name + Cell Name + LocalCell Id) exactly ONCE, then look each
+        # cell up by key.
+        #   * BUG-05: the previous code keyed only on (eNodeB Name, Cell Name),
+        #     silently dropping LocalCell Id. That is harmless only while
+        #     Cell<->LocalCell is 1:1 (as in this dataset); on any site where one
+        #     Cell Name maps to multiple LocalCell Ids it pooled unrelated series
+        #     into a single t-test. Keying on CELL_ID_COLS fixes that.
+        #   * BUG-08: the previous code rebuilt a full-frame boolean mask for
+        #     every comparison row (O(cells x rows)). One groupby is O(rows).
+        recent_groups = {k: v for k, v in recent_df.groupby(CELL_ID_COLS)[target_kpi]}
+        baseline_groups = {k: v for k, v in baseline_obs_df.groupby(CELL_ID_COLS)[target_kpi]}
+        _empty = pd.Series([], dtype="float64")
+        sig_vals, p_vals, t_vals = [], [], []
+        for _, row in comparison.iterrows():
+            key = tuple(row[c] for c in CELL_ID_COLS)
+            cr = recent_groups.get(key, _empty)
+            cb = baseline_groups.get(key, _empty)
             is_sig, p_val, t_stat = perform_ttest(cr, cb)
-            results.append({"index": idx, "stat_significant": is_sig, "p_value": p_val, "t_statistic": t_stat})
-        sig_df = pd.DataFrame(results).set_index("index")
-        comparison["stat_significant"] = sig_df["stat_significant"].reindex(comparison.index).fillna(False)
-        comparison["p_value"] = sig_df["p_value"].reindex(comparison.index)
-        comparison["t_statistic"] = sig_df["t_statistic"].reindex(comparison.index)
+            sig_vals.append(is_sig)
+            p_vals.append(p_val)
+            t_vals.append(t_stat)
+        comparison["stat_significant"] = pd.Series(sig_vals, index=comparison.index).fillna(False)
+        comparison["p_value"] = pd.Series(p_vals, index=comparison.index)
+        comparison["t_statistic"] = pd.Series(t_vals, index=comparison.index)
 
     if enable_significance_test:
         comparison["kpi_status"] = np.where(
