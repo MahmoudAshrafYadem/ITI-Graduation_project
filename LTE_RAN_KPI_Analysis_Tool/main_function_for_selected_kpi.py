@@ -115,9 +115,19 @@ def compute_day_by_day_degradation(
             cell_baseline_filter = cell_baseline_filter & (baseline_df[col] == cell_row[col])
         cell_baseline = baseline_df[cell_baseline_filter].copy()
         
-        # Create date-indexed series
-        recent_daily = cell_recent.set_index(date_col)[target_kpi]
-        baseline_daily = cell_baseline.set_index(date_col)[target_kpi]
+        # Create date-indexed series, one value per calendar day.
+        # The source frame may contain MULTIPLE rows per (cell, date) — e.g. a
+        # sub-daily/hourly export whose timestamps were normalized to date level
+        # upstream. set_index(date)[kpi] would then build a Series with a
+        # duplicate DatetimeIndex, so every scalar lookup below (recent_daily[d],
+        # recent_daily.get(d), pd.isna(...)) would return a Series and raise
+        # "The truth value of a Series is ambiguous". Aggregating per day yields a
+        # unique index and is a no-op when the data is already one row per day.
+        # mean() matches the aggregation used by compute_baseline_imputed(). For
+        # genuinely sub-daily VOLUME counters a daily SUM would be more accurate;
+        # see analyze_selected_kpi for where to plumb a per-KPI aggregation. (BUG-03)
+        recent_daily = cell_recent.groupby(cell_recent[date_col].dt.normalize())[target_kpi].mean()
+        baseline_daily = cell_baseline.groupby(cell_baseline[date_col].dt.normalize())[target_kpi].mean()
         
         day_degradations = []
         recent_values = []
@@ -369,26 +379,43 @@ def analyze_selected_kpi(
                 if pd.isna(comparison.at[idx, "days_compared"]) or comparison.at[idx, "days_compared"] == 0:
                     comparison.at[idx, "days_compared"] = comparison.at[idx, "recent_days_count"]
 
-    # ---- Post-fallback exclusion: only drop cells that are truly unrecoverable ----
-    # A cell is unrecoverable only if recent OR baseline is still NaN after
-    # all fallback attempts (meaning no measurement exists at all).
-    # A value of 0 is a valid real measurement (e.g., outage, 0% SR) and
-    # must be kept for degradation calculation. Do NOT conflate NaN with 0.
+    # ---- Post-fallback exclusion: keep every analysable cell, drop the rest ----
+    #
+    # A cell is analysable only when it has BOTH a recent observation and a
+    # *usable* baseline reference. We separate "no data" from "valid zero":
+    #
+    #   * recent_avg_kpi is NaN      -> no current measurement at all.
+    #   * baseline_avg_kpi is NaN    -> no baseline survived the fallback chain
+    #                                   (observation -> history -> min_value);
+    #                                   marked NaN upstream when no reference exists.
+    #   * baseline_avg_kpi <= 0 on a relative-% (non-ratio) KPI -> no usable
+    #     reference: degradation = change / baseline is undefined at 0 and would
+    #     otherwise fabricate a result (dead cell -> +100%, new cell -> huge
+    #     negative). Ratio / dB KPIs compare via a *signed difference* with no
+    #     denominator, so a zero baseline is perfectly valid for them and is kept.
+    #
+    # A *measured* recent value of 0 against a healthy baseline is NOT excluded:
+    # it is a genuine outage (traffic -> 0, RRC/E-RAB Setup SR -> 0%) and must be
+    # scored as the worst-case degradation it represents. (BUG-02)
     if not comparison.empty:
-        recent_is_nan = comparison["recent_avg_kpi"].isna()
-        baseline_is_nan = comparison["baseline_avg_kpi"].isna()
-        unrecoverable = recent_is_nan | baseline_is_nan
+        recent_missing = comparison["recent_avg_kpi"].isna()
+        baseline_missing = comparison["baseline_avg_kpi"].isna()
+        if is_ratio:
+            no_reference = baseline_missing
+        else:
+            no_reference = baseline_missing | (comparison["baseline_avg_kpi"] <= 0)
+        unrecoverable = recent_missing | no_reference
         if unrecoverable.any():
             _record(
                 comparison[unrecoverable],
-                "unrecoverable after fallback (recent or baseline is NaN)"
+                "excluded: no recent observation or no usable baseline reference"
             )
             comparison = comparison[~unrecoverable].copy()
             log_msg(
-                f"INFO: {int(unrecoverable.sum())} cells excluded - "
-                f"unrecoverable after baseline fallback "
-                f"(recent_nan={int(recent_is_nan.sum())}, "
-                f"baseline_nan={int(baseline_is_nan.sum())})"
+                f"INFO: {int(unrecoverable.sum())} cells excluded - no usable "
+                f"recent/baseline (recent_missing={int(recent_missing.sum())}, "
+                f"no_baseline_reference={int(no_reference.sum())}); "
+                f"measured-zero cells with a healthy baseline are retained as outages"
             )
 
     # No min_baseline_value exclusion anymore (fallback handles it)

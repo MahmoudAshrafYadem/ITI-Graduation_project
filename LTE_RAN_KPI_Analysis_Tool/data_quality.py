@@ -439,14 +439,23 @@ def apply_baseline_fallback(
                     if log_callback:
                         log_callback(f"  - {has_history.sum()} zero-baseline cells got fallback from historical")
 
+            # Any cell whose baseline is STILL zero here has no observed baseline
+            # and no recoverable history. For a relative-% (non-ratio) KPI the
+            # degradation is recent/baseline, which is undefined against a zero
+            # reference. The previous 0.001 placeholder manufactured false
+            # signals: a dead cell (recent 0) scored +100% degradation, and a
+            # cell coming online (recent > 0) produced a large negative artifact
+            # that polluted the aggregate statistics. Mark these cells with a NaN
+            # baseline ("no usable reference") so the analysis layer excludes them
+            # explicitly rather than fabricating a baseline. (BUG-04)
             still_zero = comparison_df['baseline_avg_kpi'].fillna(0) == 0
             if still_zero.any():
-                comparison_df.loc[still_zero, 'baseline_avg_kpi'] = 0.001
+                comparison_df.loc[still_zero, 'baseline_avg_kpi'] = np.nan
                 comparison_df.loc[still_zero, 'baseline_fallback_used'] = True
-                comparison_df.loc[still_zero, 'baseline_fallback_source'] = 'zero_fixed'
-                comparison_df.loc[still_zero, 'baseline_fallback_value'] = 0.001
+                comparison_df.loc[still_zero, 'baseline_fallback_source'] = 'no_usable_baseline'
+                comparison_df.loc[still_zero, 'baseline_fallback_value'] = np.nan
                 if log_callback:
-                    log_callback(f"  - {still_zero.sum()} zero-baseline cells: using 0.001 (outage recovery)")
+                    log_callback(f"  - {still_zero.sum()} zero-baseline cells: no history, no usable reference -> excluded")
 
             cols_to_drop = ['baseline_fallback', 'fallback_weeks_back', 'fallback_samples']
             comparison_df = comparison_df.drop(columns=[c for c in cols_to_drop if c in comparison_df.columns], errors='ignore')

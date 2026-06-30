@@ -1,0 +1,82 @@
+From df6359c13dd5010284bf9bd24b5664d1d98c4780 Mon Sep 17 00:00:00 2001
+From: KPI Fixes <fixes@local>
+Date: Tue, 30 Jun 2026 14:12:24 +0000
+Subject: [PATCH 2/3] fix(kpi): unit-aware outage retention in post-fallback
+ exclusion (BUG-02)
+
+A measured recent value of 0 against a healthy baseline is a genuine outage
+(traffic -> 0, RRC/E-RAB Setup SR -> 0%) and the worst-case degradation, but
+it was being treated as 'no data' and dropped. Separate 'no data' from
+'valid zero': exclude only when recent or baseline is NaN, plus, for
+relative-% (non-ratio) KPIs, when the baseline reference is <= 0 (undefined
+denominator). Ratio/dB KPIs compare via signed difference, so a zero baseline
+is valid for them and is kept. Together with BUG-04 this removes the dead-cell
+false positive (0 in both periods) while retaining true outages.
+---
+ .../main_function_for_selected_kpi.py         | 43 +++++++++++++------
+ 1 file changed, 30 insertions(+), 13 deletions(-)
+
+diff --git a/LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py b/LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py
+index 89b4fc5..34cbdc2 100644
+--- a/LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py
++++ b/LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py
+@@ -369,26 +369,43 @@ def analyze_selected_kpi(
+                 if pd.isna(comparison.at[idx, "days_compared"]) or comparison.at[idx, "days_compared"] == 0:
+                     comparison.at[idx, "days_compared"] = comparison.at[idx, "recent_days_count"]
+ 
+-    # ---- Post-fallback exclusion: only drop cells that are truly unrecoverable ----
+-    # A cell is unrecoverable only if recent OR baseline is still NaN after
+-    # all fallback attempts (meaning no measurement exists at all).
+-    # A value of 0 is a valid real measurement (e.g., outage, 0% SR) and
+-    # must be kept for degradation calculation. Do NOT conflate NaN with 0.
++    # ---- Post-fallback exclusion: keep every analysable cell, drop the rest ----
++    #
++    # A cell is analysable only when it has BOTH a recent observation and a
++    # *usable* baseline reference. We separate "no data" from "valid zero":
++    #
++    #   * recent_avg_kpi is NaN      -> no current measurement at all.
++    #   * baseline_avg_kpi is NaN    -> no baseline survived the fallback chain
++    #                                   (observation -> history -> min_value);
++    #                                   marked NaN upstream when no reference exists.
++    #   * baseline_avg_kpi <= 0 on a relative-% (non-ratio) KPI -> no usable
++    #     reference: degradation = change / baseline is undefined at 0 and would
++    #     otherwise fabricate a result (dead cell -> +100%, new cell -> huge
++    #     negative). Ratio / dB KPIs compare via a *signed difference* with no
++    #     denominator, so a zero baseline is perfectly valid for them and is kept.
++    #
++    # A *measured* recent value of 0 against a healthy baseline is NOT excluded:
++    # it is a genuine outage (traffic -> 0, RRC/E-RAB Setup SR -> 0%) and must be
++    # scored as the worst-case degradation it represents. (BUG-02)
+     if not comparison.empty:
+-        recent_is_nan = comparison["recent_avg_kpi"].isna()
+-        baseline_is_nan = comparison["baseline_avg_kpi"].isna()
+-        unrecoverable = recent_is_nan | baseline_is_nan
++        recent_missing = comparison["recent_avg_kpi"].isna()
++        baseline_missing = comparison["baseline_avg_kpi"].isna()
++        if is_ratio:
++            no_reference = baseline_missing
++        else:
++            no_reference = baseline_missing | (comparison["baseline_avg_kpi"] <= 0)
++        unrecoverable = recent_missing | no_reference
+         if unrecoverable.any():
+             _record(
+                 comparison[unrecoverable],
+-                "unrecoverable after fallback (recent or baseline is NaN)"
++                "excluded: no recent observation or no usable baseline reference"
+             )
+             comparison = comparison[~unrecoverable].copy()
+             log_msg(
+-                f"INFO: {int(unrecoverable.sum())} cells excluded - "
+-                f"unrecoverable after baseline fallback "
+-                f"(recent_nan={int(recent_is_nan.sum())}, "
+-                f"baseline_nan={int(baseline_is_nan.sum())})"
++                f"INFO: {int(unrecoverable.sum())} cells excluded - no usable "
++                f"recent/baseline (recent_missing={int(recent_missing.sum())}, "
++                f"no_baseline_reference={int(no_reference.sum())}); "
++                f"measured-zero cells with a healthy baseline are retained as outages"
+             )
+ 
+     # No min_baseline_value exclusion anymore (fallback handles it)
+-- 
+2.43.0
+
