@@ -10,6 +10,7 @@
 # ============================================================
 
 import pandas as pd
+import traceback
 
 from KPI_Configuration import KPI_CONFIGS, CELL_ID_COLS, SITE_COL, CELL_COL, DATE_COL
 from main_function_for_selected_kpi import analyze_selected_kpi
@@ -120,6 +121,10 @@ def analyze_all_kpis(
                 "error": str(e)
             })
             log_msg(f"{kpi_name}: ERROR - {e}")
+            # BUG-10: keep the batch resilient (one KPI must not abort the run)
+            # but stop discarding the diagnostics — record the stack so the
+            # failure is debuggable instead of reduced to a one-line message.
+            log_msg(traceback.format_exc())
     
     # Combine results
     non_empty = [df for df in outputs.values() if df is not None and not df.empty]

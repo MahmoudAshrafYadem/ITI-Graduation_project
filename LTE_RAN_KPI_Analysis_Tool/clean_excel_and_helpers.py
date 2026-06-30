@@ -231,7 +231,22 @@ def perform_ttest(recent_values, baseline_values):
         is_significant = p_value < 0.05
         return is_significant, p_value, t_stat
         
-    except Exception:
+    except (ValueError, FloatingPointError, ZeroDivisionError):
+        # Expected degenerate-input failures (e.g. everything NaN after dropna,
+        # or pathological variance). These genuinely mean "no usable test".
+        return False, np.nan, np.nan
+    except Exception as exc:  # pragma: no cover - defensive
+        # BUG-10: the old bare `except Exception: return ...` swallowed
+        # EVERYTHING silently, so a real programming error (wrong dtype, bad
+        # shape) was indistinguishable from a benign degenerate sample and
+        # vanished without a trace. Surface anything unexpected via a warning
+        # while still returning a safe, non-significant result so one odd cell
+        # cannot abort an entire batch run.
+        warnings.warn(
+            f"perform_ttest: unexpected error treated as non-significant: {exc!r}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return False, np.nan, np.nan
 
 
