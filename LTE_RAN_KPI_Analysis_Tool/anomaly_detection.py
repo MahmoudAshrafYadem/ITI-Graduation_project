@@ -9,7 +9,9 @@
 #
 # HISTORICAL BASELINE LOGIC:
 #   - Uses ALL DAYS from the previous 24 days (not same-weekday matching)
-#   - Z-score: (value - median) / std of the last 24 days
+#   - Robust z-score: (value - median) / (1.4826 * MAD) of the last 24 days
+#     (MAD = median absolute deviation; resistant to the spikes being detected;
+#      falls back to std when the history is majority-constant and MAD == 0)
 #   - Requires at least 2 samples for z-score; falls back to % change
 #     with 1 sample
 #
@@ -179,8 +181,9 @@ def detect_kpi_anomalies_last_day(
     baseline_mode_label = "4week_rolling_avg"
 
     log_msg(f"Baseline mode: {baseline_mode_label}")
-    log_msg(f"  → Looking back 4 weeks for SAME WEEKDAY values (spike detection)")
-    log_msg(f"  → Spike detection: z-score (threshold: {spike_z_threshold}, requires 4 weeks history)")
+    log_msg(f"  → Spike baseline: ALL DAYS in the previous 4 weeks (24-day lookback, not same-weekday)")
+    log_msg(f"  → Spike detection: robust z-score = (value − median) / (1.4826·MAD), "
+            f"threshold {spike_z_threshold}; requires ≥2 of the last 24 days")
 
     # ---- Prepare data ----
     df = clean_excel_columns(df.copy())
@@ -279,6 +282,18 @@ def detect_kpi_anomalies_last_day(
             hist_std = float(np.std(history_values)) if len(history_values) >= 2 else np.nan
             hist_days = len(history_values)
 
+            # Robust dispersion for spike detection (BUG-07). 1.4826*MAD is a
+            # consistent estimator of sigma under normality, but unlike plain
+            # std it is NOT inflated by the very spikes we are trying to detect
+            # — so a single large outlier no longer hides itself by blowing up
+            # the denominator. std is retained for reporting/fallback only.
+            if hist_days >= 2:
+                hist_mad = float(np.median(np.abs(np.asarray(history_values, dtype="float64") - hist_median)))
+                robust_scale = 1.4826 * hist_mad
+            else:
+                hist_mad = np.nan
+                robust_scale = np.nan
+
             # ---- ZERO ANOMALY DETECTION ----
             # KPI is 0 on last day, but historical values were non-zero.
             if last_value == 0:
@@ -339,13 +354,21 @@ def detect_kpi_anomalies_last_day(
                         spike_method = f"%change (1-week, threshold {spike_pct_threshold}%)"
 
             else:
-                # 2+ samples — use z-score against the median
-                # Median is more robust than mean to outliers in the history
-                if not pd.isna(hist_std) and hist_std > 1e-10:
-                    z_score = (last_value - hist_median) / hist_std
+                # 2+ samples — ROBUST z-score against the median (BUG-07).
+                # Scale = 1.4826*MAD. If the history is majority-constant the
+                # MAD is 0, so fall back to std to avoid divide-by-zero while
+                # still flagging a divergent last-day value.
+                scale = robust_scale
+                if pd.isna(scale) or scale <= 1e-10:
+                    scale = hist_std
+                    scale_kind = "std-fallback"
+                else:
+                    scale_kind = "MAD"
+                if not pd.isna(scale) and scale > 1e-10:
+                    z_score = (last_value - hist_median) / scale
                     if abs(z_score) >= spike_z_threshold:
                         is_spike = True
-                        spike_method = f"z-score (threshold {spike_z_threshold})"
+                        spike_method = f"robust z-score ({scale_kind}, threshold {spike_z_threshold})"
 
             if is_spike:
                 # Determine direction
