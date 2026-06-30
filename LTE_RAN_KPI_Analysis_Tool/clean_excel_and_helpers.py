@@ -202,9 +202,17 @@ def perform_ttest(recent_values, baseline_values):
                 # Same constant value - no difference, not significant
                 return False, 1.0, 0.0
             else:
-                # Different constants - this IS a real difference
-                # But t-test will fail, so we declare it significant
-                return True, 0.0, np.nan
+                # Different constants in both periods -> a real, definite shift.
+                # With zero variance in both groups the pooled standard error is
+                # 0, so the t-statistic's limit is a *signed* infinity and the
+                # p-value -> 0. scipy's ttest_ind returns NaN here (0/0), and the
+                # old fallback propagated that NaN, which then poisoned every
+                # downstream numeric comparison/format on t_statistic. Return the
+                # mathematically correct signed infinity instead so the result is
+                # usable: sign follows (recent - baseline). (BUG-06)
+                mean_diff = recent_clean.mean() - baseline_clean.mean()
+                t_stat = np.inf if mean_diff > 0 else -np.inf
+                return True, 0.0, t_stat
         
         # Suppress precision loss warnings for near-identical data
         with warnings.catch_warnings():
