@@ -55,7 +55,12 @@ def _get_last_n_days_historical_values(
     lookback_days,
     cell_values,
 ):
-    """
+    """DEPRECATED — retained for backward compatibility only.
+
+    detect_kpi_anomalies_last_day no longer calls this per cell (it pre-builds
+    the lookback window with a single groupby per KPI; see BUG-08). The
+    behaviour here is unchanged so any external caller still works.
+
     Collect ALL historical values for a cell within the last N days.
 
     Used for z-score spike/zero anomaly detection: compares last-day value
@@ -234,42 +239,43 @@ def detect_kpi_anomalies_last_day(
     cells_checked = 0
     kpis_checked = 0
 
+    # ---- Precompute the 24-day lookback window ONCE (shared across KPIs) ----
+    # BUG-08: previously the code re-scanned the entire frame for every
+    # (KPI, cell) pair — once to read the last-day value and again inside
+    # _get_last_n_days_historical_values to gather 24 days of history —
+    # i.e. O(kpis x cells x rows). Here we restrict to the lookback window
+    # once and build per-cell lookups with a single groupby per KPI (O(rows)).
+    # The lookups reproduce the old per-cell results exactly: one value per
+    # (cell, day) taken from the first matching row, NaNs dropped.
+    lookback_dates = [last_date - pd.Timedelta(days=k) for k in range(1, 25)]
+    lookback_set = set(lookback_dates)
+    history_window = df[df[DATE_COL].isin(lookback_set)]
+
     for kpi_name, kpi_col, bad_direction, min_baseline_value in kpi_columns:
         log_msg(f"\nChecking KPI: {kpi_name} ({kpi_col})")
 
-        # Iterate over each cell on the last day
-        last_day_cells = last_day_df[CELL_ID_COLS].drop_duplicates()
-        for _, cell_row in last_day_cells.iterrows():
+        # Last-day value per cell: first row per cell (mirrors the old .iloc[0]).
+        last_val_series = (
+            last_day_df.drop_duplicates(subset=CELL_ID_COLS, keep="first")
+            .set_index(CELL_ID_COLS)[kpi_col]
+        )
+        # 24-day history per cell: one value per (cell, day) (first row), NaNs dropped.
+        hw = history_window.drop_duplicates(subset=CELL_ID_COLS + [DATE_COL], keep="first").copy()
+        hw["_v"] = pd.to_numeric(hw[kpi_col], errors="coerce")
+        hw = hw.dropna(subset=["_v"])
+        history_lookup = {key: grp["_v"].to_numpy() for key, grp in hw.groupby(CELL_ID_COLS)}
+
+        for cell_key, last_value_raw in last_val_series.items():
             cells_checked += 1
-
-            # Get the last-day value for this cell + KPI
-            cell_last_day_filter = True
-            for col in CELL_ID_COLS:
-                cell_last_day_filter = cell_last_day_filter & (
-                    last_day_df[col] == cell_row[col]
-                )
-            cell_last_day = last_day_df[cell_last_day_filter]
-
-            if cell_last_day.empty:
-                continue
-
-            last_value_raw = cell_last_day[kpi_col].iloc[0]
             if pd.isna(last_value_raw):
                 continue
-
             last_value = float(last_value_raw)
 
-            # ---- Get last 24 days historical values (all weekdays) ----
-            cell_values = tuple(cell_row[col] for col in CELL_ID_COLS)
-            history_values = _get_last_n_days_historical_values(
-                df_full=df,
-                target_kpi=kpi_col,
-                cell_cols=CELL_ID_COLS,
-                date_col=DATE_COL,
-                target_date=last_date,
-                lookback_days=24,
-                cell_values=cell_values,
-            )
+            cell_vals = cell_key if isinstance(cell_key, tuple) else (cell_key,)
+            cell_row = dict(zip(CELL_ID_COLS, cell_vals))
+
+            # ---- Last 24 days historical values (all weekdays) ----
+            history_values = history_lookup.get(cell_key, np.array([], dtype="float64"))
 
             if len(history_values) < min_history_samples:
                 continue  # not enough history to judge
@@ -472,7 +478,7 @@ def detect_kpi_anomalies_last_day(
     log_msg("=" * 60)
     log_msg(f"Last day analyzed: {last_date.date()} ({last_weekday_name})")
     log_msg(f"Baseline mode: {baseline_mode_label} (4 weeks)")
-    log_msg(f"Cells checked: {len(last_day_cells)}")
+    log_msg(f"Cells checked: {last_day_df[CELL_ID_COLS].drop_duplicates().shape[0]}")
     log_msg(f"KPI × cell checks performed: {kpis_checked}")
     log_msg(f"Total anomalies found: {len(anomalies_df)}")
 
