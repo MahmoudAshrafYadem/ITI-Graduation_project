@@ -239,6 +239,12 @@ def detect_kpi_anomalies_last_day(
     cells_checked = 0
     kpis_checked = 0
 
+    last_day_unique = (
+        last_day_df
+        .drop_duplicates(subset=CELL_ID_COLS, keep="first")
+        .set_index(CELL_ID_COLS)
+    )
+
     # ---- Precompute the 24-day lookback window ONCE (shared across KPIs) ----
     # BUG-08: previously the code re-scanned the entire frame for every
     # (KPI, cell) pair — once to read the last-day value and again inside
@@ -254,11 +260,7 @@ def detect_kpi_anomalies_last_day(
     for kpi_name, kpi_col, bad_direction, min_baseline_value in kpi_columns:
         log_msg(f"\nChecking KPI: {kpi_name} ({kpi_col})")
 
-        # Last-day value per cell: first row per cell (mirrors the old .iloc[0]).
-        last_val_series = (
-            last_day_df.drop_duplicates(subset=CELL_ID_COLS, keep="first")
-            .set_index(CELL_ID_COLS)[kpi_col]
-        )
+        last_val_series = last_day_unique[kpi_col]
         # 24-day history per cell: one value per (cell, day) (first row), NaNs dropped.
         hw = history_window.drop_duplicates(subset=CELL_ID_COLS + [DATE_COL], keep="first").copy()
         hw["_v"] = pd.to_numeric(hw[kpi_col], errors="coerce")
@@ -327,8 +329,10 @@ def detect_kpi_anomalies_last_day(
                         "Historical_Days": hist_days,
                         "Anomaly_Type": "Zero",
                         "Z_Score": np.nan,
-                        "Pct_Change": -100.0,  # 100% drop to zero
+                        "Pct_Change": -100.0,
                         "Direction": "zero",
+                        "Impact": "degradation",
+                        "Detection_Method": "Zero Detection",
                         "Severity": severity,
                         "Baseline_Mode": baseline_mode_label,
                         "Description": (
@@ -443,6 +447,8 @@ def detect_kpi_anomalies_last_day(
                     "Z_Score": z_score,
                     "Pct_Change": pct_change,
                     "Direction": direction,
+                    "Impact": impact,
+                    "Detection_Method": spike_method,
                     "Severity": severity,
                     "Baseline_Mode": baseline_mode_label,
                     "Description": desc,
@@ -450,10 +456,17 @@ def detect_kpi_anomalies_last_day(
 
     # ---- Build output DataFrame ----
     output_columns = CELL_ID_COLS + [
-        "Date", "KPI_Name", "KPI_Column", "Value",
+        "Date",
+        "KPI_Name",
+        "KPI_Column",
+        "Value",
         "Historical_Median", "Historical_Mean", "Historical_Std", "Historical_Days",
-        "Anomaly_Type", "Z_Score", "Pct_Change", "Direction", "Severity",
-        "Baseline_Mode", "Description",
+        "Anomaly_Type", "Z_Score", "Pct_Change", "Direction",
+        "Impact",
+        "Detection_Method",
+        "Severity",
+        "Baseline_Mode",
+        "Description",
     ]
 
     if anomalies:
@@ -487,6 +500,15 @@ def detect_kpi_anomalies_last_day(
         spike_count = int((anomalies_df["Anomaly_Type"] == "Spike").sum())
         log_msg(f"  - Zero anomalies:  {zero_count}")
         log_msg(f"  - Spike anomalies: {spike_count}")
+
+        degradation_count = (
+            anomalies_df["Impact"] == "degradation"
+        ).sum()
+        enhancement_count = (
+            anomalies_df["Impact"] == "enhancement"
+        ).sum()
+        log_msg(f"  - Degradations : {degradation_count}")
+        log_msg(f"  - Enhancements : {enhancement_count}")
 
         log_msg("\nSeverity breakdown:")
         for sev in ["Critical", "High", "Medium", "Low"]:
@@ -529,6 +551,14 @@ def _save_anomalies_to_file(anomalies_df, output_path, last_date,
             spike_df = anomalies_df[anomalies_df["Anomaly_Type"] == "Spike"]
             date_first(spike_df).to_excel(writer, sheet_name="Spike_Anomalies", index=False)
 
+            degradation_df = anomalies_df[
+                anomalies_df["Impact"] == "degradation"
+            ] if not anomalies_df.empty else pd.DataFrame()
+
+            enhancement_df = anomalies_df[
+                anomalies_df["Impact"] == "enhancement"
+            ] if not anomalies_df.empty else pd.DataFrame()
+
             # Sheet 4: Summary
             summary_data = {
                 "Last_Day_Analyzed": [last_date],
@@ -538,6 +568,8 @@ def _save_anomalies_to_file(anomalies_df, output_path, last_date,
                 "Total_Anomalies": [len(anomalies_df)],
                 "Zero_Anomalies": [len(zero_df)],
                 "Spike_Anomalies": [len(spike_df)],
+                "Degradation_Anomalies": [len(degradation_df)],
+                "Enhancement_Anomalies": [len(enhancement_df)],
                 "Critical_Severity": [
                     int((anomalies_df["Severity"] == "Critical").sum())
                     if not anomalies_df.empty else 0
