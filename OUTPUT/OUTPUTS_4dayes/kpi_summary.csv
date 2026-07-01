@@ -1,6 +1,6 @@
 ﻿kpi_name,target_kpi_column,kpi_category,threshold_%,degraded_cells_count,max_degradation_%,status,error
-DL Traffic,(HU) DL Traffic Volume (GBytes),Traffic,30.0,34,96.68495295864682,Completed,
-UL Traffic,(HU) UL Traffic Volume (GBytes),Traffic,30.0,35,93.81815189871958,Completed,
+DL Traffic,(HU) DL Traffic Volume (GBytes),Traffic,30.0,34,100.0,Completed,
+UL Traffic,(HU) UL Traffic Volume (GBytes),Traffic,30.0,35,100.0,Completed,
 DL Throughput,(HU) User DL Average Throughput (Mbps),Integrity,20.0,28,51.477349501625625,Completed,
 UL Throughput,(HU) User UL Average Throughput (Mbps),Integrity,20.0,34,75.70429424029828,Completed,
 RRC Setup SR,(TE) RRC Setup SR%,Accessibility,5.0,0,1.3268000000000058,Completed,
