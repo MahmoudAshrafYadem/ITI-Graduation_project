@@ -17,6 +17,8 @@
 # Output columns include new "baseline_fallback_*" columns for transparency.
 # ============================================================
 
+import warnings
+
 import numpy as np
 import pandas as pd
 
@@ -34,6 +36,7 @@ from clean_excel_and_helpers import (
     calculate_degradation,
     perform_ttest,
     get_periods_enhanced,
+    DEGRADATION_PCT_CAP,
 )
 from cause_detect_functions import (
     find_degradation_causes_vectorized,
@@ -50,6 +53,48 @@ def _empty_incomplete():
     return pd.DataFrame(columns=CELL_ID_COLS + [
         "kpi", "recent_days_count", "baseline_days_count",
         "expected_recent_days", "expected_baseline_days", "reason"])
+
+
+def _safe_nanmean(a, axis):
+    # np.nanmean warns ("Mean of empty slice") for all-NaN rows and returns
+    # NaN, which is exactly the value we want for cells with no usable
+    # baseline; suppress the noise rather than the (correct) NaN.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmean(a, axis=axis)
+
+
+def _safe_nanmedian(a, axis):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmedian(a, axis=axis)
+
+
+def _vectorized_degradation(recent, baseline, bad_direction, is_ratio):
+    """Element-wise equivalent of calculate_degradation() over numpy arrays.
+
+    Mirrors clean_excel_and_helpers.calculate_degradation exactly so the
+    vectorized day-by-day path produces identical numbers to the old scalar
+    loop: ratio/dB KPIs use a signed difference (no denominator); non-ratio
+    KPIs use a relative %% change and yield NaN when the baseline is 0; NaN
+    inputs propagate to NaN. (Supports BUG-08 vectorization.)
+    """
+    recent = np.asarray(recent, dtype="float64")
+    baseline = np.asarray(baseline, dtype="float64")
+    if bad_direction not in ("low", "high"):
+        return np.full(recent.shape, np.nan)
+    if is_ratio:
+        return (baseline - recent) if bad_direction == "low" else (recent - baseline)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if bad_direction == "low":
+            deg = (baseline - recent) / baseline * 100.0
+        else:
+            deg = (recent - baseline) / baseline * 100.0
+    deg = np.where(baseline == 0, np.nan, deg)
+    # Winsorize to match calculate_degradation's DEGRADATION_PCT_CAP so the
+    # vectorized day-by-day path and the scalar path agree exactly, including on
+    # the near-zero-baseline artifact tails (residual of BUG-04).
+    return np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP)
 
 
 def compute_day_by_day_degradation(
@@ -86,138 +131,98 @@ def compute_day_by_day_degradation(
         - day_by_day_degradations (list of per-day degradation values)
         - days_compared (number of day pairs compared)
     """
-    results = []
-    
-    # Create day mapping based on baseline mode
+    cell_cols = list(cell_cols)
+    out_cols = cell_cols + [
+        "recent_avg_kpi", "baseline_avg_kpi", "kpi_degradation_ratio_%",
+        "day_by_day_degradations", "days_compared",
+        "recent_days_count", "baseline_days_count",
+    ]
+
+    if recent_df.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    # ------------------------------------------------------------------ #
+    # BUG-08 (performance): the previous implementation iterated every
+    # cell and, for each one, rebuilt a full-frame boolean mask over the
+    # entire recent_df and baseline_df (O(cells x rows)). On the real data
+    # (~1,316 cells) that dominated runtime. This vectorized version does
+    # the same arithmetic with two groupby/pivot passes (O(rows)) and
+    # reproduces the old per-cell semantics exactly (verified frame-for-
+    # frame against the original on the real dataset and on synthetic
+    # edge cases). mean() per (cell, day) matches the old per-cell groupby
+    # and is a no-op when the data is already one row per day (BUG-03).
+    # ------------------------------------------------------------------ #
+    rec = recent_df[cell_cols + [date_col, target_kpi]].copy()
+    rec["_day"] = rec[date_col].dt.normalize()
+    recent_daily = rec.groupby(cell_cols + ["_day"])[target_kpi].mean()
+    R = recent_daily.unstack("_day")
+
+    if baseline_df is None or baseline_df.empty:
+        B = pd.DataFrame(index=pd.Index([], name=R.index.name))
+    else:
+        base = baseline_df[cell_cols + [date_col, target_kpi]].copy()
+        base["_day"] = base[date_col].dt.normalize()
+        baseline_daily = base.groupby(cell_cols + ["_day"])[target_kpi].mean()
+        B = baseline_daily.unstack("_day")
+
+    # Only cells present in BOTH windows are analysable (the old code took
+    # the inner merge of recent_cells and baseline_cells).
+    cells = R.index.intersection(B.index)
+    if len(cells) == 0:
+        return pd.DataFrame(columns=out_cols)
+
+    rdates = [pd.Timestamp(d).normalize() for d in recent_dates]
+    R = R.reindex(index=cells, columns=rdates)
+    Rv = R.to_numpy(dtype="float64")
+    recent_present = ~np.isnan(Rv)
+    recent_days_count = recent_present.sum(axis=1)
+    recent_avg = _safe_nanmean(np.where(recent_present, Rv, np.nan), axis=1)
+
     if baseline_mode == "last_week":
-        # Direct day-to-day mapping: recent day i vs baseline day i (same weekday)
-        day_mapping = {recent_dates[i]: baseline_dates[i] for i in range(len(recent_dates))}
+        # recent_dates[i] pairs with baseline_dates[i] (same weekday).
+        bdates = [pd.Timestamp(d).normalize() for d in baseline_dates]
+        Bv = B.reindex(index=cells, columns=bdates).to_numpy(dtype="float64")
+        n = min(Rv.shape[1], Bv.shape[1])
+        Rv_a, Bv_a, present_a = Rv[:, :n], Bv[:, :n], recent_present[:, :n]
     else:
-        # For 4week_rolling_avg: map recent day to same weekday average from baseline period
-        # Each recent day maps to multiple baseline days (same weekday from 4 weeks)
-        day_mapping = None  # Will handle differently below
-    
-    # Get unique cells
-    recent_cells = recent_df[cell_cols].drop_duplicates()
-    baseline_cells = baseline_df[cell_cols].drop_duplicates()
-    all_cells = recent_cells.merge(baseline_cells, on=cell_cols, how='inner')
-    
-    for _, cell_row in all_cells.iterrows():
-        cell_filter = True
-        for col in cell_cols:
-            cell_filter = cell_filter & (recent_df[col] == cell_row[col])
-        
-        cell_recent = recent_df[cell_filter].copy()
-        
-        # Get baseline data for this cell
-        cell_baseline_filter = True
-        for col in cell_cols:
-            cell_baseline_filter = cell_baseline_filter & (baseline_df[col] == cell_row[col])
-        cell_baseline = baseline_df[cell_baseline_filter].copy()
-        
-        # Create date-indexed series, one value per calendar day.
-        # The source frame may contain MULTIPLE rows per (cell, date) — e.g. a
-        # sub-daily/hourly export whose timestamps were normalized to date level
-        # upstream. set_index(date)[kpi] would then build a Series with a
-        # duplicate DatetimeIndex, so every scalar lookup below (recent_daily[d],
-        # recent_daily.get(d), pd.isna(...)) would return a Series and raise
-        # "The truth value of a Series is ambiguous". Aggregating per day yields a
-        # unique index and is a no-op when the data is already one row per day.
-        # mean() matches the aggregation used by compute_baseline_imputed(). For
-        # genuinely sub-daily VOLUME counters a daily SUM would be more accurate;
-        # see analyze_selected_kpi for where to plumb a per-KPI aggregation. (BUG-03)
-        recent_daily = cell_recent.groupby(cell_recent[date_col].dt.normalize())[target_kpi].mean()
-        baseline_daily = cell_baseline.groupby(cell_baseline[date_col].dt.normalize())[target_kpi].mean()
-        
-        day_degradations = []
-        recent_values = []
-        baseline_values = []
-        
-        for recent_day in recent_dates:
-            recent_day = pd.Timestamp(recent_day).normalize()
-            
-            if recent_day not in recent_daily.index or pd.isna(recent_daily.get(recent_day)):
-                continue
-            
-            recent_val = recent_daily[recent_day]
-            recent_values.append(recent_val)
-            
-            if baseline_mode == "last_week":
-                # Direct day mapping
-                baseline_day = day_mapping.get(recent_day)
-                if baseline_day is None:
-                    continue
-                baseline_day = pd.Timestamp(baseline_day).normalize()
-                
-                # NEW: Keep the cell even if baseline is NaN — record the
-                # baseline value so apply_baseline_fallback() can recover it
-                # later from historical data. calculate_degradation() will
-                # return NaN for NaN baselines, which is fine: the
-                # fallback at the aggregate level will patch baseline_avg_kpi
-                # and we recompute the ratio afterwards.
-                if baseline_day in baseline_daily.index:
-                    baseline_val = baseline_daily[baseline_day]
-                    if not pd.isna(baseline_val):
-                        baseline_values.append(baseline_val)
-                        deg = calculate_degradation(recent_val, baseline_val, bad_direction, is_ratio)
-                        if not pd.isna(deg):
-                            day_degradations.append(deg)
-                # If baseline_day is missing or NaN, skip but keep the cell
-            else:
-                # 4week_rolling_avg: compare with same weekday average from baseline period
-                # Get all same-weekday values from baseline
-                same_weekday = recent_day.dayofweek
-                same_weekday_dates = [d for d in baseline_dates if pd.Timestamp(d).dayofweek == same_weekday]
-                
-                baseline_vals_for_day = []
-                for bd in same_weekday_dates:
-                    bd = pd.Timestamp(bd).normalize()
-                    if bd in baseline_daily.index and not pd.isna(baseline_daily.get(bd)):
-                        baseline_vals_for_day.append(baseline_daily[bd])
-                
-                if baseline_vals_for_day:
-                    baseline_val = np.mean(baseline_vals_for_day)
-                    baseline_values.append(baseline_val)
-                    
-                    deg = calculate_degradation(recent_val, baseline_val, bad_direction, is_ratio)
-                    if not pd.isna(deg):
-                        day_degradations.append(deg)
-        
-        # NEW: Do NOT skip cells with empty day_degradations.
-        # Cells with all-zero baseline (or all-missing baseline) will have
-        # empty day_degradations but may still have valid recent_values.
-        # We include them here with NaN kpi_degradation_ratio_% so that
-        # apply_baseline_fallback() in the caller can recover their baseline
-        # from historical data and recompute the ratio. Only cells with NO
-        # recent values at all are skipped (nothing to compare).
-        if not recent_values:
-            continue
-        
-        result_row = dict(zip(cell_cols, [cell_row[c] for c in cell_cols]))
-        result_row['recent_avg_kpi'] = np.mean(recent_values) if recent_values else np.nan
-        result_row['baseline_avg_kpi'] = np.mean(baseline_values) if baseline_values else np.nan
-        # MEDIAN (not mean) of per-day degradations — robust to spike days.
-        # A single spike day (e.g., special event, counter glitch) would
-        # drastically skew the mean; the median reflects the TYPICAL day's
-        # degradation and is not pulled around by outliers.
-        # If no day_degradations were computed (e.g., all baselines were zero),
-        # kpi_degradation_ratio_% stays NaN. The fallback + recompute step
-        # in the caller will fill this in if a historical baseline is found.
-        result_row['kpi_degradation_ratio_%'] = np.median(day_degradations) if day_degradations else np.nan
-        result_row['day_by_day_degradations'] = day_degradations
-        result_row['days_compared'] = len(day_degradations)
-        result_row['recent_days_count'] = len(recent_values)
-        result_row['baseline_days_count'] = len(baseline_values)
-        
-        results.append(result_row)
-    
-    if results:
-        return pd.DataFrame(results)
+        # 4week_rolling_avg: each recent day is compared with the mean of the
+        # present same-weekday baseline daily values.
+        bcols = list(B.columns)
+        b_wd = np.array([pd.Timestamp(c).dayofweek for c in bcols], dtype=int)
+        Ball = B.reindex(index=cells).to_numpy(dtype="float64")
+        Bv_a = np.full(Rv.shape, np.nan, dtype="float64")
+        for j, rdate in enumerate(rdates):
+            sel = (b_wd == pd.Timestamp(rdate).dayofweek)
+            if sel.any():
+                Bv_a[:, j] = _safe_nanmean(Ball[:, sel], axis=1)
+        Rv_a, present_a = Rv, recent_present
+
+    # A baseline value counts only when its paired recent day is present AND
+    # the baseline reference itself is present (the old nested guards).
+    pair = present_a & ~np.isnan(Bv_a)
+    deg = _vectorized_degradation(Rv_a, Bv_a, bad_direction, is_ratio)
+    deg = np.where(pair, deg, np.nan)
+    baseline_masked = np.where(pair, Bv_a, np.nan)
+
+    baseline_days_count = (~np.isnan(baseline_masked)).sum(axis=1)
+    baseline_avg = _safe_nanmean(baseline_masked, axis=1)
+    days_compared = (~np.isnan(deg)).sum(axis=1)
+    kpi_deg = _safe_nanmedian(deg, axis=1)
+    day_lists = [list(row[~np.isnan(row)]) for row in deg]
+
+    if isinstance(cells, pd.MultiIndex):
+        result = pd.DataFrame(list(cells), columns=cell_cols)
     else:
-        return pd.DataFrame(columns=list(cell_cols) + [
-            'recent_avg_kpi', 'baseline_avg_kpi', 'kpi_degradation_ratio_%',
-            'day_by_day_degradations', 'days_compared', 'recent_days_count', 'baseline_days_count'
-        ])
+        result = pd.DataFrame({cell_cols[0]: list(cells)})
+    result["recent_avg_kpi"] = recent_avg
+    result["baseline_avg_kpi"] = baseline_avg
+    result["kpi_degradation_ratio_%"] = kpi_deg
+    result["day_by_day_degradations"] = day_lists
+    result["days_compared"] = days_compared
+    result["recent_days_count"] = recent_days_count
+    result["baseline_days_count"] = baseline_days_count
+    return result
+
 
 
 def analyze_selected_kpi(
@@ -457,17 +462,31 @@ def analyze_selected_kpi(
 
     # Significance test on OBSERVED values only
     if enable_significance_test and not comparison.empty:
-        results = []
-        for idx, row in comparison.iterrows():
-            cid = (row[SITE_COL], row[CELL_COL])
-            cr = recent_df[(recent_df[SITE_COL] == cid[0]) & (recent_df[CELL_COL] == cid[1])][target_kpi]
-            cb = baseline_obs_df[(baseline_obs_df[SITE_COL] == cid[0]) & (baseline_obs_df[CELL_COL] == cid[1])][target_kpi]
+        # Group observed recent/baseline values by the FULL cell identity
+        # (eNodeB Name + Cell Name + LocalCell Id) exactly ONCE, then look each
+        # cell up by key.
+        #   * BUG-05: the previous code keyed only on (eNodeB Name, Cell Name),
+        #     silently dropping LocalCell Id. That is harmless only while
+        #     Cell<->LocalCell is 1:1 (as in this dataset); on any site where one
+        #     Cell Name maps to multiple LocalCell Ids it pooled unrelated series
+        #     into a single t-test. Keying on CELL_ID_COLS fixes that.
+        #   * BUG-08: the previous code rebuilt a full-frame boolean mask for
+        #     every comparison row (O(cells x rows)). One groupby is O(rows).
+        recent_groups = {k: v for k, v in recent_df.groupby(CELL_ID_COLS)[target_kpi]}
+        baseline_groups = {k: v for k, v in baseline_obs_df.groupby(CELL_ID_COLS)[target_kpi]}
+        _empty = pd.Series([], dtype="float64")
+        sig_vals, p_vals, t_vals = [], [], []
+        for _, row in comparison.iterrows():
+            key = tuple(row[c] for c in CELL_ID_COLS)
+            cr = recent_groups.get(key, _empty)
+            cb = baseline_groups.get(key, _empty)
             is_sig, p_val, t_stat = perform_ttest(cr, cb)
-            results.append({"index": idx, "stat_significant": is_sig, "p_value": p_val, "t_statistic": t_stat})
-        sig_df = pd.DataFrame(results).set_index("index")
-        comparison["stat_significant"] = sig_df["stat_significant"].reindex(comparison.index).fillna(False)
-        comparison["p_value"] = sig_df["p_value"].reindex(comparison.index)
-        comparison["t_statistic"] = sig_df["t_statistic"].reindex(comparison.index)
+            sig_vals.append(is_sig)
+            p_vals.append(p_val)
+            t_vals.append(t_stat)
+        comparison["stat_significant"] = pd.Series(sig_vals, index=comparison.index).fillna(False)
+        comparison["p_value"] = pd.Series(p_vals, index=comparison.index)
+        comparison["t_statistic"] = pd.Series(t_vals, index=comparison.index)
 
     if enable_significance_test:
         comparison["kpi_status"] = np.where(

@@ -9,7 +9,9 @@
 #
 # HISTORICAL BASELINE LOGIC:
 #   - Uses ALL DAYS from the previous 24 days (not same-weekday matching)
-#   - Z-score: (value - median) / std of the last 24 days
+#   - Robust z-score: (value - median) / (1.4826 * MAD) of the last 24 days
+#     (MAD = median absolute deviation; resistant to the spikes being detected;
+#      falls back to std when the history is majority-constant and MAD == 0)
 #   - Requires at least 2 samples for z-score; falls back to % change
 #     with 1 sample
 #
@@ -53,7 +55,12 @@ def _get_last_n_days_historical_values(
     lookback_days,
     cell_values,
 ):
-    """
+    """DEPRECATED — retained for backward compatibility only.
+
+    detect_kpi_anomalies_last_day no longer calls this per cell (it pre-builds
+    the lookback window with a single groupby per KPI; see BUG-08). The
+    behaviour here is unchanged so any external caller still works.
+
     Collect ALL historical values for a cell within the last N days.
 
     Used for z-score spike/zero anomaly detection: compares last-day value
@@ -179,8 +186,9 @@ def detect_kpi_anomalies_last_day(
     baseline_mode_label = "4week_rolling_avg"
 
     log_msg(f"Baseline mode: {baseline_mode_label}")
-    log_msg(f"  → Looking back 4 weeks for SAME WEEKDAY values (spike detection)")
-    log_msg(f"  → Spike detection: z-score (threshold: {spike_z_threshold}, requires 4 weeks history)")
+    log_msg(f"  → Spike baseline: ALL DAYS in the previous 4 weeks (24-day lookback, not same-weekday)")
+    log_msg(f"  → Spike detection: robust z-score = (value − median) / (1.4826·MAD), "
+            f"threshold {spike_z_threshold}; requires ≥2 of the last 24 days")
 
     # ---- Prepare data ----
     df = clean_excel_columns(df.copy())
@@ -231,42 +239,43 @@ def detect_kpi_anomalies_last_day(
     cells_checked = 0
     kpis_checked = 0
 
+    # ---- Precompute the 24-day lookback window ONCE (shared across KPIs) ----
+    # BUG-08: previously the code re-scanned the entire frame for every
+    # (KPI, cell) pair — once to read the last-day value and again inside
+    # _get_last_n_days_historical_values to gather 24 days of history —
+    # i.e. O(kpis x cells x rows). Here we restrict to the lookback window
+    # once and build per-cell lookups with a single groupby per KPI (O(rows)).
+    # The lookups reproduce the old per-cell results exactly: one value per
+    # (cell, day) taken from the first matching row, NaNs dropped.
+    lookback_dates = [last_date - pd.Timedelta(days=k) for k in range(1, 25)]
+    lookback_set = set(lookback_dates)
+    history_window = df[df[DATE_COL].isin(lookback_set)]
+
     for kpi_name, kpi_col, bad_direction, min_baseline_value in kpi_columns:
         log_msg(f"\nChecking KPI: {kpi_name} ({kpi_col})")
 
-        # Iterate over each cell on the last day
-        last_day_cells = last_day_df[CELL_ID_COLS].drop_duplicates()
-        for _, cell_row in last_day_cells.iterrows():
+        # Last-day value per cell: first row per cell (mirrors the old .iloc[0]).
+        last_val_series = (
+            last_day_df.drop_duplicates(subset=CELL_ID_COLS, keep="first")
+            .set_index(CELL_ID_COLS)[kpi_col]
+        )
+        # 24-day history per cell: one value per (cell, day) (first row), NaNs dropped.
+        hw = history_window.drop_duplicates(subset=CELL_ID_COLS + [DATE_COL], keep="first").copy()
+        hw["_v"] = pd.to_numeric(hw[kpi_col], errors="coerce")
+        hw = hw.dropna(subset=["_v"])
+        history_lookup = {key: grp["_v"].to_numpy() for key, grp in hw.groupby(CELL_ID_COLS)}
+
+        for cell_key, last_value_raw in last_val_series.items():
             cells_checked += 1
-
-            # Get the last-day value for this cell + KPI
-            cell_last_day_filter = True
-            for col in CELL_ID_COLS:
-                cell_last_day_filter = cell_last_day_filter & (
-                    last_day_df[col] == cell_row[col]
-                )
-            cell_last_day = last_day_df[cell_last_day_filter]
-
-            if cell_last_day.empty:
-                continue
-
-            last_value_raw = cell_last_day[kpi_col].iloc[0]
             if pd.isna(last_value_raw):
                 continue
-
             last_value = float(last_value_raw)
 
-            # ---- Get last 24 days historical values (all weekdays) ----
-            cell_values = tuple(cell_row[col] for col in CELL_ID_COLS)
-            history_values = _get_last_n_days_historical_values(
-                df_full=df,
-                target_kpi=kpi_col,
-                cell_cols=CELL_ID_COLS,
-                date_col=DATE_COL,
-                target_date=last_date,
-                lookback_days=24,
-                cell_values=cell_values,
-            )
+            cell_vals = cell_key if isinstance(cell_key, tuple) else (cell_key,)
+            cell_row = dict(zip(CELL_ID_COLS, cell_vals))
+
+            # ---- Last 24 days historical values (all weekdays) ----
+            history_values = history_lookup.get(cell_key, np.array([], dtype="float64"))
 
             if len(history_values) < min_history_samples:
                 continue  # not enough history to judge
@@ -278,6 +287,18 @@ def detect_kpi_anomalies_last_day(
             hist_mean = float(np.mean(history_values))
             hist_std = float(np.std(history_values)) if len(history_values) >= 2 else np.nan
             hist_days = len(history_values)
+
+            # Robust dispersion for spike detection (BUG-07). 1.4826*MAD is a
+            # consistent estimator of sigma under normality, but unlike plain
+            # std it is NOT inflated by the very spikes we are trying to detect
+            # — so a single large outlier no longer hides itself by blowing up
+            # the denominator. std is retained for reporting/fallback only.
+            if hist_days >= 2:
+                hist_mad = float(np.median(np.abs(np.asarray(history_values, dtype="float64") - hist_median)))
+                robust_scale = 1.4826 * hist_mad
+            else:
+                hist_mad = np.nan
+                robust_scale = np.nan
 
             # ---- ZERO ANOMALY DETECTION ----
             # KPI is 0 on last day, but historical values were non-zero.
@@ -339,13 +360,21 @@ def detect_kpi_anomalies_last_day(
                         spike_method = f"%change (1-week, threshold {spike_pct_threshold}%)"
 
             else:
-                # 2+ samples — use z-score against the median
-                # Median is more robust than mean to outliers in the history
-                if not pd.isna(hist_std) and hist_std > 1e-10:
-                    z_score = (last_value - hist_median) / hist_std
+                # 2+ samples — ROBUST z-score against the median (BUG-07).
+                # Scale = 1.4826*MAD. If the history is majority-constant the
+                # MAD is 0, so fall back to std to avoid divide-by-zero while
+                # still flagging a divergent last-day value.
+                scale = robust_scale
+                if pd.isna(scale) or scale <= 1e-10:
+                    scale = hist_std
+                    scale_kind = "std-fallback"
+                else:
+                    scale_kind = "MAD"
+                if not pd.isna(scale) and scale > 1e-10:
+                    z_score = (last_value - hist_median) / scale
                     if abs(z_score) >= spike_z_threshold:
                         is_spike = True
-                        spike_method = f"z-score (threshold {spike_z_threshold})"
+                        spike_method = f"robust z-score ({scale_kind}, threshold {spike_z_threshold})"
 
             if is_spike:
                 # Determine direction
@@ -449,7 +478,7 @@ def detect_kpi_anomalies_last_day(
     log_msg("=" * 60)
     log_msg(f"Last day analyzed: {last_date.date()} ({last_weekday_name})")
     log_msg(f"Baseline mode: {baseline_mode_label} (4 weeks)")
-    log_msg(f"Cells checked: {len(last_day_cells)}")
+    log_msg(f"Cells checked: {last_day_df[CELL_ID_COLS].drop_duplicates().shape[0]}")
     log_msg(f"KPI × cell checks performed: {kpis_checked}")
     log_msg(f"Total anomalies found: {len(anomalies_df)}")
 

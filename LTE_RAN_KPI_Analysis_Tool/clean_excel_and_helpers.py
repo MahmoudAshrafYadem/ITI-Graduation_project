@@ -119,6 +119,17 @@ def clean_numeric_series(series: pd.Series) -> pd.Series:
 # CALCULATION FUNCTIONS
 # ============================================================
 
+# Symmetric cap (in %) for the non-ratio relative-change metric. A near-zero
+# (but strictly positive) baseline makes ((base - recent)/base)*100 explode —
+# e.g. a 0.0096 GB baseline can produce -8743%, a pure denominator artifact
+# that then dominates the mean/max degradation statistics (residual of BUG-04).
+# We winsorize to +/- this bound. It sits far above any real degradation (the
+# degradation threshold is single/double digits), so genuine outages (+100%)
+# and every degraded classification are untouched; only the explosive artifact
+# tails are clipped.
+DEGRADATION_PCT_CAP = 1000.0
+
+
 def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=False):
     """
     Calculate degradation percentage.
@@ -149,13 +160,15 @@ def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=
             return baseline_value - recent_value
         if baseline_value == 0:
             return np.nan
-        return ((baseline_value - recent_value) / baseline_value) * 100
+        deg = ((baseline_value - recent_value) / baseline_value) * 100
+        return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
     if bad_direction == "high":
         if is_ratio:
             return recent_value - baseline_value
         if baseline_value == 0:
             return np.nan
-        return ((recent_value - baseline_value) / baseline_value) * 100
+        deg = ((recent_value - baseline_value) / baseline_value) * 100
+        return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
     return np.nan
 
 
@@ -202,9 +215,17 @@ def perform_ttest(recent_values, baseline_values):
                 # Same constant value - no difference, not significant
                 return False, 1.0, 0.0
             else:
-                # Different constants - this IS a real difference
-                # But t-test will fail, so we declare it significant
-                return True, 0.0, np.nan
+                # Different constants in both periods -> a real, definite shift.
+                # With zero variance in both groups the pooled standard error is
+                # 0, so the t-statistic's limit is a *signed* infinity and the
+                # p-value -> 0. scipy's ttest_ind returns NaN here (0/0), and the
+                # old fallback propagated that NaN, which then poisoned every
+                # downstream numeric comparison/format on t_statistic. Return the
+                # mathematically correct signed infinity instead so the result is
+                # usable: sign follows (recent - baseline). (BUG-06)
+                mean_diff = recent_clean.mean() - baseline_clean.mean()
+                t_stat = np.inf if mean_diff > 0 else -np.inf
+                return True, 0.0, t_stat
         
         # Suppress precision loss warnings for near-identical data
         with warnings.catch_warnings():
@@ -223,7 +244,22 @@ def perform_ttest(recent_values, baseline_values):
         is_significant = p_value < 0.05
         return is_significant, p_value, t_stat
         
-    except Exception:
+    except (ValueError, FloatingPointError, ZeroDivisionError):
+        # Expected degenerate-input failures (e.g. everything NaN after dropna,
+        # or pathological variance). These genuinely mean "no usable test".
+        return False, np.nan, np.nan
+    except Exception as exc:  # pragma: no cover - defensive
+        # BUG-10: the old bare `except Exception: return ...` swallowed
+        # EVERYTHING silently, so a real programming error (wrong dtype, bad
+        # shape) was indistinguishable from a benign degenerate sample and
+        # vanished without a trace. Surface anything unexpected via a warning
+        # while still returning a safe, non-significant result so one odd cell
+        # cannot abort an entire batch run.
+        warnings.warn(
+            f"perform_ttest: unexpected error treated as non-significant: {exc!r}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return False, np.nan, np.nan
 
 
