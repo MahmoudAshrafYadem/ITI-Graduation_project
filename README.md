@@ -871,6 +871,42 @@ New `app_streamlit.py` provides a browser-based interface:
 | **E-RAB Drop Rate** threshold | 20.0% → 0.5% | Drop rate is already a percentage; 0.5% is a meaningful threshold |
 | **VoLTE KPIs** threshold | 5.0% → 2.0% | VQI (1-5 scale) requires tighter threshold |
 
+### 12.5 Bug-Fix Series — Correctness & Performance
+
+A consolidated log of the correctness, reliability and performance fixes applied
+to the analysis engine, grouped by bug ID (each maps to a stand-alone patch).
+Behaviour-preserving fixes were verified to reproduce the prior results **exactly**
+on the *New Cairo* dataset; the performance fixes leave outputs unchanged; the two
+intentional behaviour changes (BUG-07, and the BUG-04 winsor cap) are flagged as
+such below.
+
+**Data-quality & baseline correctness**
+
+- **BUG-04 — non-ratio zero-baseline `0.001` placeholder removed** (`data_quality.py`, patch `0001`): a genuinely-zero non-ratio baseline (no observation, no recoverable history) was substituted with `0.001` as a fake "outage recovery" reference. Because relative-% degradation divides by the baseline, this manufactured false signals — a dead cell (recent `0`) scored `+100%`, and a cell coming online produced a large negative artifact that skewed the aggregates. Such baselines are now marked `NaN` with source `no_usable_baseline` and excluded explicitly. (Completes the ratio-side removal done upstream in `ce2dc00`.)
+- **BUG-02 — unit-aware outage retention in post-fallback exclusion** (`main_function_for_selected_kpi.py`, patch `0002`): a measured recent value of `0` against a healthy baseline is a genuine outage (traffic → 0, RRC/E-RAB SR → 0%) and the worst-case degradation, but it was being dropped as "no data". The exclusion now separates *no data* (recent or baseline `NaN`) from *valid zero*, dropping only `NaN` — plus, for relative-% (non-ratio) KPIs, a baseline `≤ 0` (undefined denominator). Ratio/dB KPIs compare by signed difference, so a zero baseline is valid and kept. Together with BUG-04 this removes the dead-cell false positive (`0` in both periods) while retaining true outages.
+- **BUG-03 — aggregate sub-daily rows in day-by-day comparison** (`main_function_for_selected_kpi.py`, patch `0003`): `compute_day_by_day_degradation` assumed one row per `(cell, date)`. A sub-daily/hourly export normalized to date level yields duplicate `DatetimeIndex` entries, so `set_index(date)[kpi]` returned a `Series` and `pd.isna(Series)` raised *"The truth value of a Series is ambiguous"*, crashing the core analysis. Values are now aggregated per calendar day (mean, matching `compute_baseline_imputed`); a verified no-op on daily data and correct on hourly input.
+
+**Statistical significance & anomaly detection**
+
+- **BUG-05 — significance t-test keyed on the full cell identity** (`main_function_for_selected_kpi.py`): the Welch t-test grouped observed values by `(eNodeB Name, Cell Name)` only, dropping `LocalCell Id`. Harmless while `Cell ↔ LocalCell` is 1:1, but on any site where one `Cell Name` maps to several `LocalCell Id`s it pooled unrelated series into a single test. Now grouped once by the full `CELL_ID_COLS` identity and looked up by 3-tuple key.
+- **BUG-06 — finite signed *t* for constant-but-different samples** (`clean_excel_and_helpers.py`): two constant samples with different means have zero within-sample variance, so SciPy's Welch *t* is `NaN`; the old code propagated that `NaN` and silently dropped the cell from significance gating. `perform_ttest` now returns a signed infinity (sign follows `recent − baseline`) with `p = 0.0` — a real, maximally-significant difference.
+- **BUG-07 — robust (MAD-based) spike z-score** *(intentional behaviour change)* (`anomaly_detection.py`): spike detection used `(value − median) / std` over the 24-day history, but `std` is inflated by the very outliers it should catch, so a genuine spike could mask its own scale. The scale is now `1.4826 × MAD` (a consistent, outlier-resistant estimator of σ), falling back to `std` only when the history is majority-constant and `MAD = 0`. The misleading `"SAME WEEKDAY"` log line and module docstring were corrected to describe the actual all-24-day lookback. This is deliberately **more** sensitive on very stable KPIs.
+
+**Reliability & dependencies**
+
+- **BUG-09 — `requirements.txt` matches actual imports**: added `streamlit`, `plotly`, `scikit-learn`, `xgboost`, `statsmodels`; removed `xlrd` (`xlrd ≥ 2.0` can no longer read `.xlsx`, so listing it is misleading and risky).
+- **BUG-10 — unexpected errors are surfaced, not swallowed** (`clean_excel_and_helpers.py`, `combined_degraded_kpi.py`): `perform_ttest` no longer wraps its body in a bare `except Exception: return (False, nan, nan)`. Expected degenerate-input errors are caught narrowly; anything unexpected is re-surfaced via a `RuntimeWarning` (still returning a safe result so one odd cell can't abort a batch). The per-KPI batch loop now logs the full traceback on failure.
+
+**Performance (output-preserving)**
+
+- **BUG-08 — vectorized the per-cell hot loops** (`main_function_for_selected_kpi.py`, `anomaly_detection.py`): both `compute_day_by_day_degradation` and the anomaly detector rebuilt a full-frame boolean mask for *every* cell (`O(cells × rows)`). They now do the same arithmetic with `groupby`/pivot passes (`O(rows)`), verified frame-for-frame against the originals. End-to-end this cut anomaly detection from **~6.4 min to ~5 s** and roughly halved per-KPI degradation runtime, with identical results.
+
+**Residual**
+
+- **BUG-04 (residual) — winsorize tiny-baseline degradation** *(intentional, oracle-safe)* (`clean_excel_and_helpers.py`, `main_function_for_selected_kpi.py`): a near-zero but strictly positive baseline (≈ `0.0096` GB) made the relative-% metric explode (e.g. `−8743%`), skewing the mean/max stats. The non-ratio relative change is now clipped to `± DEGRADATION_PCT_CAP` (`1000%`) — far above any real degradation (threshold is single/double digits), so no classification changes; only the artifact tails are clipped. Scalar and vectorized paths share the cap.
+
+**Verification.** The verified baseline (current `main`) is preserved exactly after all behaviour-preserving fixes: **DL Traffic** 71 degraded / 1179 analyzed, **RRC Setup SR** 0 / 1141, **E-RAB Drop Rate** 0 / 1141 — degraded sets, counts and full result frames match to `1e-9`. A regression suite (`LTE_RAN_KPI_Analysis_Tool/test_kpi_bugs.py`, one focused test per bug) accompanies the changes: all tests pass on the fixed code and the behavioural tests fail on the pre-fix code.
+
 ---
 
 ## 13. Extending the System
