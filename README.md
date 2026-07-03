@@ -230,13 +230,14 @@ Degradation % = ((recent_value - baseline_value) / baseline_value) x 100
 ```
 
 **Ratio KPI Special Case:**
-For percentage-based KPIs (RRC SR, Drop Rate, HO SR, Availability, etc.), the degradation is calculated as an **absolute difference in percentage points** rather than relative percentage change:
+For percentage-based KPIs (RRC SR, Drop Rate, HO SR, Availability, etc.), the degradation is calculated as a **signed difference in percentage points** rather than relative percentage change:
 
 ```
-Degradation % = |recent_value - baseline_value|
+Degradation % = recent_value - baseline_value   (for bad_direction = "high")
+Degradation % = baseline_value - recent_value   (for bad_direction = "low")
 ```
 
-This avoids division-by-zero when baseline is 0 and correctly reflects that a drop from 99% to 95% is a 4-percentage-point degradation regardless of the baseline value.
+This avoids division-by-zero when baseline is 0 and correctly reflects that a drop from 99% to 95% is a 4-percentage-point degradation regardless of the baseline value. The sign preserves directional information even though threshold gating uses `>=`.
 
 A cell is flagged as **degraded** when:
 ```
@@ -248,7 +249,7 @@ Degradation % >= Threshold AND (statistical_significance = True OR disabled)
 | Mode | Description | Use Case |
 |------|-------------|----------|
 | **Last Week** | Same N days from previous week | Detecting sudden incidents |
-| **4-Week Rolling** | Average of same weekdays over 4 weeks | Smoothing weekly patterns |
+| **4-Week Rolling** | Median of same weekdays over 4 weeks | Smoothing weekly patterns |
 | **Custom Range** | User-defined start/end dates | Special event analysis |
 
 ### 3.3 Statistical Significance Testing
@@ -317,7 +318,7 @@ imputed_value = median(same_weekday_values_over_last_N_weeks)
 **Constraints:**
 - Minimum 2 historical samples required
 - Recent window is NEVER imputed (preserves real outage detection)
-- Imputation count is tracked in output (`baseline_imputed_days`)
+- Imputation is applied internally during baseline aggregation; cells with imputed values are listed in the incomplete-cells output
 
 #### 3.5.4 Baseline Fallback (Ratio vs Non-Ratio Handling)
 
@@ -329,7 +330,7 @@ The fallback logic now distinguishes between **ratio KPIs** (percentages like RR
 
 **For non-ratio KPIs:**
 - **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
-- **Zero baseline** (actual 0 GB/Mbps): attempt historical fallback first → then `0.001` if no history
+- **Zero baseline** (actual 0 GB/Mbps): attempt historical fallback first → then marked as `NaN` with source `no_usable_baseline` and **excluded** from analysis (the old `0.001` placeholder was removed because it manufactured false signals, e.g., dead cells scoring +100%)
 
 This ensures ratio KPIs with a legitimate 0% baseline are evaluated correctly without artificial floor values.
 
@@ -338,7 +339,7 @@ This ensures ratio KPIs with a legitimate 0% baseline are evaluated correctly wi
 ## 4. Project Structure
 
 ```
-lte_kpi_analyzer_v2/
+LTE_RAN_KPI_Analysis_Tool/
 |
 +-- main.py                              # Application entry point
 +-- initialization.py                    # Tkinter GUI & app controller
@@ -609,7 +610,6 @@ The Streamlit UI provides the same analysis capabilities in a browser-based inte
 | `recent_period` / `baseline_period` | Analysis date ranges |
 | `recent_avg_kpi` / `baseline_avg_kpi` | Aggregated values |
 | `recent_days_count` / `baseline_days_count` | Data completeness |
-| `baseline_imputed_days` | Days imputed in baseline |
 | `kpi_degradation_ratio_%` | Calculated degradation |
 | `kpi_status` | "Degraded" or "Normal" |
 | `stat_significant` | True if p < 0.05 |
@@ -650,7 +650,10 @@ Input Data
 
 ### 8.2 Quarantine Output
 
-Invalid values are saved to `data_quality_quarantine.csv`:
+Invalid values are saved to a quarantine CSV file:
+
+- **Single-KPI mode:** `{prefix}_counter_quarantine.csv`
+- **All-KPIs mode:** `data_quality_quarantine.csv`
 
 | Column | Description |
 |--------|-------------|

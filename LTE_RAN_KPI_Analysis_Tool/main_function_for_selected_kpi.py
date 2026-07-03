@@ -185,7 +185,7 @@ def compute_day_by_day_degradation(
         n = min(Rv.shape[1], Bv.shape[1])
         Rv_a, Bv_a, present_a = Rv[:, :n], Bv[:, :n], recent_present[:, :n]
     else:
-        # 4week_rolling_avg: each recent day is compared with the mean of the
+        # 4week_rolling_avg: each recent day is compared with the median of the
         # present same-weekday baseline daily values.
         bcols = list(B.columns)
         b_wd = np.array([pd.Timestamp(c).dayofweek for c in bcols], dtype=int)
@@ -194,7 +194,7 @@ def compute_day_by_day_degradation(
         for j, rdate in enumerate(rdates):
             sel = (b_wd == pd.Timestamp(rdate).dayofweek)
             if sel.any():
-                Bv_a[:, j] = _safe_nanmean(Ball[:, sel], axis=1)
+                Bv_a[:, j] = _safe_nanmedian(Ball[:, sel], axis=1)
         Rv_a, present_a = Rv, recent_present
 
     # A baseline value counts only when its paired recent day is present AND
