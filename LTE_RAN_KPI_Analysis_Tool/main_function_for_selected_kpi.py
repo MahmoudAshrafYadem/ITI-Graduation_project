@@ -28,6 +28,7 @@ from KPI_Configuration import (
     CELL_COL,
     CELL_ID_COLS,
     KPI_CONFIGS,
+    IMPUTATION_CONFIG,
 )
 from clean_excel_and_helpers import (
     clean_excel_columns,
@@ -95,6 +96,105 @@ def _vectorized_degradation(recent, baseline, bad_direction, is_ratio):
     # vectorized day-by-day path and the scalar path agree exactly, including on
     # the near-zero-baseline artifact tails (residual of BUG-04).
     return np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP)
+
+
+def _build_baseline_daily_with_imputation(
+    target_obs,
+    target_kpi,
+    cell_cols,
+    date_col,
+    baseline_dates,
+):
+    """Materialize baseline-window rows with same-weekday imputed values.
+
+    compute_baseline_imputed() returns aggregate transparency fields. The
+    day-by-day comparator needs actual daily baseline values, so this helper
+    creates one row per cell/day after filling missing baseline days from
+    prior same weekdays. Recent-period values are never imputed.
+    """
+    cfg = IMPUTATION_CONFIG
+    lookback_weeks = cfg.get("lookback_weeks", 4)
+    min_samples = cfg.get("min_impute_samples", 2)
+    enable = cfg.get("enable_imputation", True)
+
+    cell_cols = list(cell_cols)
+    baseline_dates = [pd.Timestamp(d).normalize() for d in baseline_dates]
+    if target_obs.empty or not baseline_dates:
+        return target_obs.iloc[0:0].copy()
+
+    daily = target_obs[cell_cols + [date_col, target_kpi]].copy()
+    daily[date_col] = pd.to_datetime(daily[date_col], errors="coerce").dt.normalize()
+    piv = daily.pivot_table(index=cell_cols, columns=date_col, values=target_kpi, aggfunc="mean")
+
+    frames = []
+    for d in baseline_dates:
+        vals = piv[d].copy() if d in piv.columns else pd.Series(np.nan, index=piv.index)
+        if enable:
+            lookback_cols = [d - pd.Timedelta(days=7 * k) for k in range(1, lookback_weeks + 1)]
+            lookback_cols = [c for c in lookback_cols if c in piv.columns]
+            if lookback_cols:
+                hist = piv[lookback_cols]
+                med = hist.median(axis=1, skipna=True)
+                cnt = hist.notna().sum(axis=1)
+                fill_mask = vals.isna() & (cnt >= min_samples)
+                vals = vals.where(~fill_mask, med)
+
+        vals = vals.dropna()
+        if vals.empty:
+            continue
+        day_df = vals.reset_index(name=target_kpi)
+        day_df[date_col] = d
+        frames.append(day_df[cell_cols + [date_col, target_kpi]])
+
+    if not frames:
+        return target_obs.iloc[0:0].copy()
+    return pd.concat(frames, ignore_index=True)
+
+
+def _severity_and_confidence(row, degradation_threshold, is_ratio, category):
+    """Return RF severity and confidence labels for a degraded KPI row."""
+    deg = row.get("kpi_degradation_ratio_%")
+    if pd.isna(deg) or deg < degradation_threshold:
+        return "Normal", "N/A", "Below degradation threshold"
+
+    if category == "Availability":
+        severity = "Critical" if deg >= 10 else "High" if deg >= 3 else "Medium"
+    elif is_ratio:
+        severity = "Critical" if deg >= 20 else "High" if deg >= 10 else "Medium"
+    else:
+        severity = "Critical" if deg >= 80 else "High" if deg >= 50 else "Medium"
+
+    reasons = []
+    confidence_points = 0
+    if bool(row.get("stat_significant", False)):
+        confidence_points += 2
+        reasons.append("statistically significant")
+    elif pd.isna(row.get("p_value", np.nan)):
+        reasons.append("statistical test unavailable")
+    else:
+        reasons.append("statistical test not significant")
+
+    if row.get("recent_days_count", 0) == row.get("expected_recent_days", -1):
+        confidence_points += 1
+    else:
+        reasons.append("incomplete recent days")
+
+    if row.get("baseline_days_count", 0) == row.get("expected_baseline_days", -1):
+        confidence_points += 1
+    else:
+        reasons.append("incomplete baseline days")
+
+    fallback_used = bool(row.get("baseline_fallback_used", False))
+    if not fallback_used:
+        confidence_points += 1
+    else:
+        reasons.append(f"baseline fallback: {row.get('baseline_fallback_source')}")
+
+    if severity == "Critical":
+        confidence_points += 1
+
+    confidence = "High" if confidence_points >= 5 else "Medium" if confidence_points >= 3 else "Low"
+    return severity, confidence, "; ".join(reasons)
 
 
 def compute_day_by_day_degradation(
@@ -290,18 +390,23 @@ def analyze_selected_kpi(
     # Recent period data
     recent_df = target_obs[(target_obs[DATE_COL] >= recent_start) & (target_obs[DATE_COL] <= recent_end)].copy()
 
-    # Baseline period data (with imputation)
+    # Baseline period data (observed values plus materialized imputed daily rows)
     baseline_obs_df = target_obs[(target_obs[DATE_COL] >= baseline_start) & (target_obs[DATE_COL] <= baseline_end)].copy()
-    
-    # Also get historical data for baseline imputation
     baseline_with_imputation = compute_baseline_imputed(target_obs, target_kpi, CELL_ID_COLS, DATE_COL, baseline_dates)
+    baseline_imputed_df = _build_baseline_daily_with_imputation(
+        target_obs=target_obs,
+        target_kpi=target_kpi,
+        cell_cols=CELL_ID_COLS,
+        date_col=DATE_COL,
+        baseline_dates=baseline_dates,
+    )
 
     # ---- NEW: Day-by-day degradation calculation ----
     log_msg("Calculating day-by-day degradation...")
     
     day_by_day_results = compute_day_by_day_degradation(
         recent_df=recent_df,
-        baseline_df=baseline_obs_df,
+        baseline_df=baseline_imputed_df,
         target_kpi=target_kpi,
         cell_cols=CELL_ID_COLS,
         date_col=DATE_COL,
@@ -321,6 +426,15 @@ def analyze_selected_kpi(
     else:
         comparison = day_by_day_results.copy()
         log_msg(f"Day-by-day comparison completed for {len(comparison)} cells")
+
+    if not comparison.empty and not baseline_with_imputation.empty:
+        impute_cols = CELL_ID_COLS + ["imputed_days_count"]
+        comparison = comparison.merge(
+            baseline_with_imputation[impute_cols],
+            on=CELL_ID_COLS,
+            how="left",
+        )
+        comparison["imputed_days_count"] = comparison["imputed_days_count"].fillna(0).astype(int)
 
     # ---- Track cells with incomplete data ----
     incomplete_records = []
@@ -488,14 +602,6 @@ def analyze_selected_kpi(
         comparison["p_value"] = pd.Series(p_vals, index=comparison.index)
         comparison["t_statistic"] = pd.Series(t_vals, index=comparison.index)
 
-    if enable_significance_test:
-        comparison["kpi_status"] = np.where(
-            (comparison["kpi_degradation_ratio_%"] >= degradation_threshold) &
-            (comparison.get("stat_significant", False) == True), "Degraded", "Normal")
-    else:
-        comparison["kpi_status"] = np.where(
-            comparison["kpi_degradation_ratio_%"] >= degradation_threshold, "Degraded", "Normal")
-
     comparison["selected_kpi_name"] = selected_kpi_name
     comparison["target_kpi_column"] = target_kpi
     comparison["kpi_category"] = config["category"]
@@ -504,6 +610,26 @@ def analyze_selected_kpi(
     comparison["recent_period"] = f"{recent_start.date()} to {recent_end.date()}"
     comparison["baseline_period"] = f"{baseline_start.date()} to {baseline_end.date()}"
     comparison["baseline_mode"] = baseline_mode
+    comparison["expected_recent_days"] = expected_recent
+    comparison["expected_baseline_days"] = expected_baseline
+
+    comparison["kpi_status"] = np.where(
+        comparison["kpi_degradation_ratio_%"] >= degradation_threshold, "Degraded", "Normal")
+    sev_conf = comparison.apply(
+        lambda row: _severity_and_confidence(row, degradation_threshold, is_ratio, config["category"]),
+        axis=1,
+        result_type="expand",
+    )
+    sev_conf.columns = ["rf_severity", "analysis_confidence", "confidence_reason"]
+    comparison = pd.concat([comparison, sev_conf], axis=1)
+    if enable_significance_test:
+        comparison["significance_note"] = np.where(
+            comparison["stat_significant"] == True,
+            "Supports degradation",
+            "Advisory only - degradation is retained because threshold was crossed",
+        )
+    else:
+        comparison["significance_note"] = "Disabled"
 
     degraded_cells = comparison[comparison["kpi_status"] == "Degraded"].copy()
     degraded_cells = degraded_cells.sort_values("kpi_degradation_ratio_%", ascending=False)
@@ -622,6 +748,9 @@ def analyze_selected_kpi(
         degraded_with_causes["all_detected_causes"] = "None"
         degraded_with_causes["all_cause_categories"] = "Unknown"
         degraded_with_causes["all_recommended_actions"] = "Manual investigation needed"
+        degraded_with_causes["rca_pattern"] = "Unknown"
+        degraded_with_causes["supporting_evidence"] = "No related counters from the config were found in the uploaded sheet."
+        degraded_with_causes["next_investigation_steps"] = "Review raw counters, alarms, recent parameter changes, neighbor cells, and OSS logs manually."
 
     metadata["quarantine_df"] = pd.concat(quarantine_frames, ignore_index=True) if quarantine_frames else _empty_quarantine()
 
@@ -630,7 +759,10 @@ def analyze_selected_kpi(
         "selected_threshold_%", "recent_period", "baseline_period",
         "recent_avg_kpi", "baseline_avg_kpi", 
         "kpi_degradation_ratio_%",
+        "rf_severity", "analysis_confidence", "confidence_reason",
+        "stat_significant", "p_value", "significance_note",
         "number_of_detected_causes",
+        "rca_pattern", "supporting_evidence", "next_investigation_steps",
         "all_detected_causes", "main_root_cause_category",
         "main_cause_counter_or_kpi", "main_degradation_reason", "main_recommended_action", "all_recommended_actions"
     ]

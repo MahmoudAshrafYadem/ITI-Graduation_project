@@ -6,8 +6,6 @@
 
 import numpy as np
 import pandas as pd
-import re
-
 from KPI_Configuration import CELL_ID_COLS, SITE_COL, CELL_COL, DATE_COL, classify_unit
 from clean_excel_and_helpers import (
     clean_excel_columns,
@@ -33,6 +31,159 @@ def _is_ratio_feature(feature_col):
     is_counter = any(kw in feature_lower for kw in non_pct_keywords)
     
     return has_pct and not is_counter
+
+
+def _rf_priority_bonus(category, feature):
+    """RF-aware priority bonus used for ranking competing detected causes."""
+    text = f"{category} {feature}".lower()
+    critical_terms = [
+        "availability", "unavailable", "outage", "interference", "packet loss",
+        "qci-1", "drop", "failure", "fail", "rach", "access", "s1",
+    ]
+    medium_terms = [
+        "congestion", "prb", "bler", "cqi", "mcs", "coverage", "cell edge",
+        "handover", "mobility", "srvcc",
+    ]
+    demand_terms = ["active user", "traffic demand", "user drop", "traffic drop"]
+    if any(term in text for term in critical_terms):
+        return 80.0
+    if any(term in text for term in medium_terms):
+        return 40.0
+    if any(term in text for term in demand_terms):
+        return -20.0
+    return 0.0
+
+
+def _cause_score(change_value, threshold, severity, category, feature):
+    """Rank causes by severity, RF criticality, and threshold excess.
+
+    The old score (change * severity) tended to over-rank huge low-value
+    demand swings. This keeps the magnitude signal, but caps it and gives
+    direct RF/service-impact causes a stronger voice in the ranking.
+    """
+    if pd.isna(change_value):
+        return np.nan
+    threshold = max(float(threshold), 1e-9)
+    threshold_excess = max(0.0, (float(change_value) - threshold) / threshold)
+    magnitude_points = min(float(change_value), 100.0) * 0.2
+    return (
+        float(severity) * 35.0
+        + _rf_priority_bonus(category, feature)
+        + min(threshold_excess, 5.0) * 15.0
+        + magnitude_points
+    )
+
+
+RCA_INVESTIGATION_STEPS = {
+    "Outage": (
+        "Check cell/site availability, active alarms, administrative state, "
+        "power, transmission, S1, and planned work before RF tuning."
+    ),
+    "Congestion": (
+        "Check PRB/CCE utilization, active users, admission/resource failures, "
+        "load balancing, CA, scheduler settings, and capacity expansion options."
+    ),
+    "Radio Quality": (
+        "Check CQI/SINR/BLER/MCS, interference indicators, PCI issues, antenna "
+        "azimuth/tilt, coverage dominance, and recent physical changes."
+    ),
+    "Coverage": (
+        "Check TA distribution, cell-edge users, overshooting, weak coverage, "
+        "antenna tilt/azimuth, neighbor dominance, and coverage holes."
+    ),
+    "Interference": (
+        "Check UL/DL interference trend, noise rise, PIM/external sources, "
+        "neighbor leakage, TDD guard configuration, and affected neighboring cells."
+    ),
+    "Mobility": (
+        "Check neighbor definitions, HO preparation/execution counters, RACH on "
+        "target cells, PCI confusion, reselection/HO parameters, and target availability."
+    ),
+    "Demand": (
+        "Validate user/traffic demand trend, seasonality, holidays/events, traffic "
+        "migration to neighbors, and commercial/service changes before RF action."
+    ),
+    "Unknown": (
+        "Review raw counters, alarms, recent parameter changes, neighbor cells, "
+        "and OSS logs manually; current evidence is not strong enough for a pattern."
+    ),
+}
+
+
+def _contains(text, terms):
+    return any(term in text for term in terms)
+
+
+def _patterns_from_text(text):
+    patterns = []
+    if _contains(text, ["availability", "unavail", "outage", "s1 failure", "manual lock"]):
+        patterns.append("Outage")
+    if _contains(text, ["interference", "noise rise", "pim", "uppts"]):
+        patterns.append("Interference")
+    if _contains(text, ["congestion", "prb", "cce", "capacity", "no radio resource", "resource failure", "admission"]):
+        patterns.append("Congestion")
+    if _contains(text, ["ta ", "cell edge", "border ue", "coverage", "overshooting", "poor cover", "distance"]):
+        patterns.append("Coverage")
+    if _contains(text, ["cqi", "bler", "mcs", "sinr", "rsrp", "rsrq", "modulation", "radio quality"]):
+        patterns.append("Radio Quality")
+    if _contains(text, ["handover", " ho ", "srvcc", "reestablish", "neighbor", "mobility", "rach on target"]):
+        patterns.append("Mobility")
+    if _contains(text, ["active user", "traffic demand", "user drop", "traffic drop", "attempts decreased"]):
+        patterns.append("Demand")
+    return patterns
+
+
+def _choose_kpi_pattern(kpi_name, patterns):
+    """Choose final RCA pattern using KPI-specific RF triage order."""
+    kpi = str(kpi_name).lower()
+    if not patterns:
+        return "Unknown"
+
+    if "availability" in kpi:
+        order = ["Outage", "Congestion", "Interference", "Coverage", "Radio Quality", "Mobility", "Demand"]
+    elif "throughput" in kpi or "traffic" in kpi:
+        order = ["Outage", "Interference", "Congestion", "Coverage", "Radio Quality", "Mobility", "Demand"]
+    elif "rrc" in kpi or "erab" in kpi or "rach" in kpi:
+        order = ["Outage", "Congestion", "Interference", "Coverage", "Radio Quality", "Mobility", "Demand"]
+    elif "drop" in kpi or "re-establishment" in kpi or "reestablishment" in kpi:
+        order = ["Outage", "Interference", "Coverage", "Radio Quality", "Mobility", "Congestion", "Demand"]
+    elif "ho " in f" {kpi} " or "handover" in kpi:
+        order = ["Outage", "Mobility", "Coverage", "Interference", "Radio Quality", "Congestion", "Demand"]
+    else:
+        order = ["Outage", "Interference", "Congestion", "Coverage", "Radio Quality", "Mobility", "Demand"]
+
+    for pattern in order:
+        if pattern in patterns:
+            return pattern
+    return patterns[0]
+
+
+def _classify_rca_pattern(kpi_name, cell_causes):
+    """Convert detected rule evidence into a real-world RF RCA pattern."""
+    if cell_causes is None or len(cell_causes) == 0:
+        return {
+            "rca_pattern": "Unknown",
+            "supporting_evidence": "No related counter passed its RCA threshold.",
+            "next_investigation_steps": RCA_INVESTIGATION_STEPS["Unknown"],
+        }
+
+    text_parts = []
+    evidence_parts = []
+    for _, row in cell_causes.head(5).iterrows():
+        feature = str(row["feature"])
+        category = str(row["category"])
+        text_parts.append(f"{feature} {category} {row.get('reason', '')}".lower())
+        evidence_parts.append(
+            f"{category}: {feature} changed by {row['change_pct']:.2f}"
+        )
+
+    patterns = _patterns_from_text(" ".join(text_parts))
+    pattern = _choose_kpi_pattern(kpi_name, patterns)
+    return {
+        "rca_pattern": pattern,
+        "supporting_evidence": " | ".join(evidence_parts) if evidence_parts else "No strong evidence.",
+        "next_investigation_steps": RCA_INVESTIGATION_STEPS.get(pattern, RCA_INVESTIGATION_STEPS["Unknown"]),
+    }
 
 
 def find_degradation_causes_vectorized(df, rules):
@@ -109,7 +260,10 @@ def find_degradation_causes_vectorized(df, rules):
         mask = mask & ~np.isnan(change_pct)
         
         if mask.any():
-            score = change_pct * severity
+            score = np.array([
+                _cause_score(change_pct[pos], threshold, severity, rule["category"], feature)
+                for pos in range(len(change_pct))
+            ])
             positions = np.where(mask)[0]
             
             for pos in positions:
@@ -140,6 +294,9 @@ def find_degradation_causes_vectorized(df, rules):
         "all_detected_causes": "None",
         "all_cause_categories": "Unknown",
         "all_recommended_actions": "Manual investigation needed",
+        "rca_pattern": "Unknown",
+        "supporting_evidence": "No related counter passed its RCA threshold.",
+        "next_investigation_steps": RCA_INVESTIGATION_STEPS["Unknown"],
     }
     
     # If no causes detected, return defaults for all rows
@@ -163,6 +320,8 @@ def find_degradation_causes_vectorized(df, rules):
             result_dict[row_pos] = default_cols.copy()
         else:
             main_cause = cell_causes.iloc[0]
+            kpi_name = df_work.loc[row_pos, "selected_kpi_name"] if "selected_kpi_name" in df_work.columns else ""
+            rca = _classify_rca_pattern(kpi_name, cell_causes)
             
             all_causes_text = " | ".join([
                 f"{row['feature']}: recent={row['recent_value']:.2f}, baseline={row['baseline_value']:.2f}, change={row['change_pct']:.2f}%"
@@ -184,6 +343,7 @@ def find_degradation_causes_vectorized(df, rules):
                 "all_detected_causes": all_causes_text,
                 "all_cause_categories": all_categories_text,
                 "all_recommended_actions": all_actions_text,
+                **rca,
             }
     
     result_df = pd.DataFrame.from_dict(result_dict, orient='index')
@@ -229,13 +389,16 @@ def find_degradation_causes_row(row, rules):
         
         if change_pct >= rule["threshold"]:
             severity = rule.get("severity", 3)
+            score = _cause_score(
+                change_pct, rule["threshold"], severity, rule["category"], feature
+            )
             detected_causes.append({
                 "feature": feature,
                 "recent_value": recent_value,
                 "baseline_value": baseline_value,
                 "change_pct": change_pct,
                 "severity": severity,
-                "score": change_pct * severity,
+                "score": score,
                 "category": rule["category"],
                 "reason": rule["reason"],
                 "recommended_action": rule["recommended_action"],
@@ -255,11 +418,15 @@ def find_degradation_causes_row(row, rules):
             "all_detected_causes": "None",
             "all_cause_categories": "Unknown",
             "all_recommended_actions": "Manual investigation needed",
+            "rca_pattern": "Unknown",
+            "supporting_evidence": "No related counter passed its RCA threshold.",
+            "next_investigation_steps": RCA_INVESTIGATION_STEPS["Unknown"],
         })
     
     # Sort by severity-weighted score
     detected_causes = sorted(detected_causes, key=lambda x: x["score"], reverse=True)
     main_cause = detected_causes[0]
+    rca = _classify_rca_pattern(row.get("selected_kpi_name", ""), pd.DataFrame(detected_causes))
     
     all_causes_text = " | ".join([
         f"{c['feature']}: recent={c['recent_value']:.2f}, baseline={c['baseline_value']:.2f}, change={c['change_pct']:.2f}%"
@@ -281,4 +448,5 @@ def find_degradation_causes_row(row, rules):
         "all_detected_causes": all_causes_text,
         "all_cause_categories": all_categories_text,
         "all_recommended_actions": all_actions_text,
+        **rca,
     })

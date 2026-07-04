@@ -34,9 +34,9 @@ This project addresses the critical challenge of **Radio Frequency (RF) optimiza
 
 - **Automating** the detection of KPI degradation across the entire network
 - **Intelligently correlating** degraded KPIs with related network counters
-- **Pinpointing root causes** with severity-weighted scoring
+- **Pinpointing root causes** with RF-aware evidence scoring and RCA pattern classification
 - **Generating actionable recommendations** for RF engineers
-- **Providing statistical confidence** via Welch's t-test significance testing
+- **Providing analysis confidence** using data completeness, baseline quality, severity, and Welch's t-test as advisory evidence
 
 ### 1.2 Problem Domain
 
@@ -67,14 +67,14 @@ Our analyzer implements a **three-layer analytical pipeline**:
 |  LAYER 2: DEGRADATION DETECTION & STATISTICAL VALIDATION    |
 |  +-- Configurable baseline windows (last week / 4-week avg) |
 |  +-- Degradation ratio calculation with direction awareness |
-|  +-- Welch's t-test for statistical significance            |
-|  +-- Minimum baseline value filtering                       |
+|  +-- Welch's t-test as advisory statistical evidence        |
+|  +-- RF severity and confidence labeling                    |
 +-------------------------------------------------------------+
 |  LAYER 3: ROOT CAUSE ANALYSIS & RECOMMENDATION ENGINE       |
-|  +-- Severity-weighted cause scoring (1-5 scale)            |
+|  +-- RF-aware cause scoring and threshold-excess weighting  |
 |  +-- Multi-cause detection with ranking                     |
-|  +-- Category-based classification (Radio, Capacity, etc.)  |
-|  +-- Actionable RF optimization recommendations             |
+|  +-- RCA patterns: Outage, Congestion, Coverage, etc.       |
+|  +-- Supporting evidence and next investigation steps       |
 +-------------------------------------------------------------+
 ```
 
@@ -85,8 +85,10 @@ Our analyzer implements a **three-layer analytical pipeline**:
 | **13 KPI Categories** | Traffic, Integrity, Accessibility, Retainability, Mobility, Availability, CSFB, VoLTE, RRC Re-establishment |
 | **142 Detection Rules** | Correlated counter analysis with configurable thresholds |
 | **3 Baseline Modes** | Last-week parallel, 4-week rolling average, custom date range |
-| **Statistical Significance** | Welch's t-test with p-value reporting |
-| **Data Quality Engine** | Unit validation, sentinel detection, baseline imputation |
+| **Advisory Statistical Evidence** | Welch's t-test with p-value reporting; no longer blocks severe threshold-based degradation |
+| **Confidence & Severity Labels** | `rf_severity`, `analysis_confidence`, and explainable confidence reasons |
+| **Data Quality Engine** | Unit validation, sentinel detection, baseline imputation used in day-by-day comparison |
+| **RF-Aware RCA Patterns** | Outage, Congestion, Radio Quality, Coverage, Interference, Mobility, Demand, Unknown |
 | **Coverage Analysis** | TA Distribution bins (0-156m to 6.6-14km) |
 | **Cell Edge Analysis** | CEU throughput and border UE metrics |
 | **Carrier Aggregation** | SCell activation, 3CC CA, FDD-TDD CA tracking |
@@ -241,8 +243,10 @@ This avoids division-by-zero when baseline is 0 and correctly reflects that a dr
 
 A cell is flagged as **degraded** when:
 ```
-Degradation % >= Threshold AND (statistical_significance = True OR disabled)
+Degradation % >= Threshold
 ```
+
+Welch's t-test is now treated as **advisory evidence**. A cell is not hidden just because the recent window has too few samples for a stable t-test. Instead, statistical significance contributes to `analysis_confidence` and `confidence_reason`.
 
 ### 3.2 Baseline Window Strategies
 
@@ -263,15 +267,18 @@ t_stat, p_value = scipy.stats.ttest_ind(
 ```
 
 - **Significant** if `p_value < 0.05`
-- Prevents false positives from high-variability cells
+- Reported as supporting evidence when significant
+- Does **not** hard-block a KPI that crosses the degradation threshold
 - Can be disabled for faster processing
 
-### 3.4 Severity-Weighted Cause Scoring
+This is important for daily/small-window RF monitoring. For example, a one-day availability outage may not have enough samples for a valid t-test, but it is still operationally degraded and should remain visible with lower confidence.
+
+### 3.4 RF-Aware Cause Scoring
 
 Each detected cause receives a **score** for ranking:
 
 ```
-Score = ChangeValue x Severity_Level
+Score = severity_weight + RF_priority_bonus + threshold_excess + capped_magnitude
 ```
 
 **Note:** The unit of `ChangeValue` depends on the feature type:
@@ -287,7 +294,20 @@ Score = ChangeValue x Severity_Level
 | 4 | Critical | Radio failures, MME issues |
 | 5 | Emergency | Availability loss, abnormal releases |
 
-The cause with the **highest score** is reported as the main root cause.
+The cause with the **highest RF-aware score** is reported as the main root cause. This avoids over-ranking huge but low-priority demand changes above smaller service-critical indicators such as availability loss, interference, RACH/access failures, QCI-1 packet loss, or drop/failure counters.
+
+After cause scoring, the RCA engine also assigns an operational `rca_pattern`:
+
+| Pattern | Typical Meaning |
+|---------|-----------------|
+| `Outage` | Availability, unavailability, S1/manual/system outage evidence |
+| `Congestion` | PRB/CCE/resource/admission pressure |
+| `Radio Quality` | CQI, BLER, MCS, SINR/RSRP/RSRQ quality path |
+| `Coverage` | TA/cell-edge/border UE/poor coverage/overshooting path |
+| `Interference` | UL/DL interference, noise rise, PIM/external source path |
+| `Mobility` | HO, SRVCC, RRC re-establishment, neighbor/target-cell path |
+| `Demand` | User/traffic demand change or traffic migration |
+| `Unknown` | No strong pattern from available counters |
 
 ### 3.5 Data Quality Framework
 
@@ -318,7 +338,8 @@ imputed_value = median(same_weekday_values_over_last_N_weeks)
 **Constraints:**
 - Minimum 2 historical samples required
 - Recent window is NEVER imputed (preserves real outage detection)
-- Imputation is applied internally during baseline aggregation; cells with imputed values are listed in the incomplete-cells output
+- Imputation is materialized into the baseline daily rows used by the day-by-day comparator, so missing baseline days can still participate when enough same-weekday history exists
+- Recent window is never imputed, so real outages or missing current measurements are not hidden
 
 #### 3.5.4 Baseline Fallback (Ratio vs Non-Ratio Handling)
 
@@ -355,13 +376,17 @@ LTE_RAN_KPI_Analysis_Tool/
 |   +-- Data loading & cleaning
 |   +-- Period splitting & aggregation
 |   +-- Degradation calculation (ratio-aware)
-|   +-- Significance testing
+|   +-- Advisory significance testing
+|   +-- RF severity and confidence labels
 |   +-- Cause detection integration
 |
 +-- combined_degraded_kpi.py             # Multi-KPI batch analysis
 |
 +-- cause_detect_functions.py            # Root cause analysis engine
 |   +-- Vectorized cause detection (ratio-aware)
+|   +-- RF-aware cause scoring
+|   +-- KPI-aware RCA pattern classification
+|   +-- Supporting evidence / investigation steps
 |   +-- Row-by-row fallback
 |
 +-- data_quality.py                      # Data validation & imputation
@@ -439,7 +464,6 @@ python test_negative_filter.py
 | `matplotlib` | >=3.4.0 | Chart visualization |
 | `python-docx` | >=0.8.11 | Word document generation (optional) |
 | `openpyxl` | >=3.0.0 | Excel .xlsx file reading |
-| `xlrd` | >=2.0.0 | Excel .xls file reading |
 
 ---
 
@@ -547,7 +571,7 @@ streamlit run LTE_RAN_KPI_Analysis_Tool/app_streamlit.py
 +-----------------------------------------------------------------------------+
 | KPI: [v DL Traffic        ]  Days: [4 ^]  Threshold: [30.0  ]            |
 | Baseline Mode: (*) Last Week  ( ) 4-Week Avg  ( ) Custom Range             |
-| [x] Require complete days    [x] Enable t-test significance filter         |
+| [x] Require complete days    [x] Enable t-test significance evidence       |
 |                                                                              |
 | [Run Selected KPI] [Analyze All KPIs] [Generate Report] [Save CSV]         |
 | [Show Dashboard] [Trend Dashboard]                                         |
@@ -612,8 +636,15 @@ The Streamlit UI provides the same analysis capabilities in a browser-based inte
 | `recent_days_count` / `baseline_days_count` | Data completeness |
 | `kpi_degradation_ratio_%` | Calculated degradation |
 | `kpi_status` | "Degraded" or "Normal" |
-| `stat_significant` | True if p < 0.05 |
+| `rf_severity` | RF impact label: Normal, Medium, High, Critical |
+| `analysis_confidence` | Confidence label based on significance, completeness, baseline quality, and severity |
+| `confidence_reason` | Explanation of why confidence is High/Medium/Low |
+| `stat_significant` | True if p < 0.05; advisory evidence, not a hard gate |
 | `p_value` / `t_statistic` | Test statistics |
+| `significance_note` | Whether the t-test supports the degradation or is advisory only |
+| `rca_pattern` | Operational RCA pattern: Outage, Congestion, Radio Quality, Coverage, Interference, Mobility, Demand, Unknown |
+| `supporting_evidence` | Short evidence summary from the top detected causes |
+| `next_investigation_steps` | Practical RF investigation path for the selected RCA pattern |
 | `main_cause_counter_or_kpi` | Top-ranked root cause |
 | `main_root_cause_category` | Cause classification |
 | `main_degradation_reason` | Human-readable explanation |
@@ -722,14 +753,14 @@ Cells with insufficient data are saved to `data_quality_incomplete_cells.csv`:
 
 ## 10. Root Cause Analysis Engine
 
-### 10.1 Vectorized Detection Algorithm
+### 10.1 Two-Stage RCA Algorithm
 
 ```python
 def find_degradation_causes_vectorized(df, rules):
     # 1. Reset index for alignment
     df_work = df.reset_index(drop=True).copy()
 
-    # 2. For each rule, vectorized numpy operations
+    # 2. Evidence detection: for each rule, vectorized numpy operations
     for rule in rules:
         feature = rule["feature"]
         unit = classify_unit(feature)       # 'dbm' | 'db' | 'pct' | 'nonneg'
@@ -749,34 +780,64 @@ def find_degradation_causes_vectorized(df, rules):
         # Vectorized threshold mask
         mask = change_pct >= rule["threshold"]
 
-        # Severity-weighted scoring
-        score = change_pct * rule["severity"]
+        # RF-aware scoring
+        score = (
+            severity_weight
+            + RF_priority_bonus
+            + threshold_excess
+            + capped_magnitude
+        )
 
-    # 3. Aggregate per cell, sort by score
-    # 4. Return top cause + top 5 all causes
+    # 3. Aggregate per cell, sort evidence by score
+    # 4. KPI-aware RCA classification chooses the final rca_pattern
+    # 5. Return top cause, top 5 evidence items, RCA pattern, and next steps
 ```
 
-### 10.2 Cause Ranking Example
+The RCA engine now separates:
+
+1. **Detected causes / evidence**: related counters that crossed their rule thresholds.
+2. **Operational RCA pattern**: the RF scenario selected from the evidence and KPI type.
+
+### 10.2 RCA Pattern Decision Logic
+
+The final `rca_pattern` is selected using KPI-specific triage order. Examples:
+
+| KPI Type | Preferred RCA Order |
+|----------|---------------------|
+| Availability | Outage -> Congestion -> Interference -> Coverage -> Radio Quality -> Mobility -> Demand |
+| Traffic / Throughput | Outage -> Interference -> Congestion -> Coverage -> Radio Quality -> Mobility -> Demand |
+| RRC / E-RAB / RACH Accessibility | Outage -> Congestion -> Interference -> Coverage -> Radio Quality -> Mobility -> Demand |
+| Drop / Re-establishment | Outage -> Interference -> Coverage -> Radio Quality -> Mobility -> Congestion -> Demand |
+| Handover / Mobility | Outage -> Mobility -> Coverage -> Interference -> Radio Quality -> Congestion -> Demand |
+
+This makes RCA closer to real RF triage. For example, an availability issue is treated as a possible outage path before tuning coverage or scheduler parameters.
+
+### 10.3 Cause Ranking Example
 
 For a cell with DL Traffic degradation:
 
-| Rank | Feature | Change % | Severity | Score | Category |
-|------|---------|----------|----------|-------|----------|
-| 1 | `Availability` | -2.5% | 5 | **12.5** | Availability Issue |
-| 2 | `DL RBLER` | +35% | 4 | **140.0** | DL Radio Failure |
-| 3 | `DL Average CQI` | -18% | 3 | **54.0** | Radio Quality Issue |
+| Rank | Feature | Change | Severity | RF Meaning | Category |
+|------|---------|--------|----------|------------|----------|
+| 1 | `Availability` | -2.5 p.p. | 5 | Service/site impact | Availability Issue |
+| 2 | `DL RBLER` | +35% | 4 | Link failure evidence | DL Radio Failure |
+| 3 | `DL Average CQI` | -18% | 3 | Radio quality evidence | Radio Quality Issue |
 
-**Main Cause:** `Availability` (highest severity-weighted score despite smaller percentage change)
+**Main cause:** `Availability`
 
-**Rationale:** A 2.5% availability drop (severity 5) is more critical than a 35% RBLER increase (severity 4) because availability impacts all users and indicates a site-level problem.
+**RCA pattern:** `Outage`
 
-### 10.3 Multi-Cause Detection
+**Rationale:** A 2.5 percentage-point availability drop can be more important than a larger relative BLER change because availability impacts all services and usually requires alarm/site/transmission checks before RF tuning.
+
+### 10.4 Multi-Cause Detection
 
 When multiple causes are detected (`multi_cause_flag = "Yes"`), the system reports:
 - **Main cause:** Highest scored single issue
 - **All causes:** Top 5 causes with recent/baseline values and change percentages
 - **All categories:** Classification of each cause
 - **All actions:** Recommended actions for each cause
+- **RCA pattern:** Operational scenario classification
+- **Supporting evidence:** Short summary of the top evidence behind the selected pattern
+- **Next investigation steps:** Practical RF troubleshooting sequence
 
 ---
 
@@ -909,6 +970,119 @@ such below.
 - **BUG-04 (residual) — winsorize tiny-baseline degradation** *(intentional, oracle-safe)* (`clean_excel_and_helpers.py`, `main_function_for_selected_kpi.py`): a near-zero but strictly positive baseline (≈ `0.0096` GB) made the relative-% metric explode (e.g. `−8743%`), skewing the mean/max stats. The non-ratio relative change is now clipped to `± DEGRADATION_PCT_CAP` (`1000%`) — far above any real degradation (threshold is single/double digits), so no classification changes; only the artifact tails are clipped. Scalar and vectorized paths share the cap.
 
 **Verification.** The verified baseline (current `main`) is preserved exactly after all behaviour-preserving fixes: **DL Traffic** 71 degraded / 1179 analyzed, **RRC Setup SR** 0 / 1141, **E-RAB Drop Rate** 0 / 1141 — degraded sets, counts and full result frames match to `1e-9`. A regression suite (`LTE_RAN_KPI_Analysis_Tool/test_kpi_bugs.py`, one focused test per bug) accompanies the changes: all tests pass on the fixed code and the behavioural tests fail on the pre-fix code.
+
+### 12.6 RF Optimization Logic Improvements — Advisory Significance, RCA Patterns, and Confidence Scoring
+
+Major upgrade to align the analyzer with real-world RF optimization workflows, transforming it from a rule-based detector into an RF decision-support engine:
+
+#### Advisory Statistical Significance (No Hard Gate)
+
+- **Before:** `stat_significant == True` was required for KPI to be flagged as degraded. Small-sample outages could be silently rejected.
+- **After:** Welch's t-test is now purely advisory evidence, not a blocker. A KPI crossing the degradation threshold is always flagged as `Degraded`, while p-value/significance contribute to `analysis_confidence`.
+- **Implementation:** [main_function_for_selected_kpi.py](./LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py) now computes `rf_severity`, `analysis_confidence`, and `confidence_reason` independently of the t-test result.
+- **Example:** A cell with Availability drop from 100% to 0% is now marked `Degraded` with `Confidence: Medium` (degradation clear, but sample size small), instead of being hidden due to `p_value = NaN`.
+
+#### Baseline Imputation Actually Used
+
+- **Before:** Imputed baseline days were computed but not fed into day-by-day degradation calculation. Metadata said imputation was used; actual comparison used only observed baseline days.
+- **After:** Imputed baselines are now materialized and passed to `compute_day_by_day_degradation()` for the target KPI, so analysis reflects the documented claim.
+- **Implementation:** `_materialize_imputed_baseline_df()` helper creates a blended frame with observed days preserved and missing same-weekday days filled from historical medians, respecting all data-quality constraints.
+- **Effect:** Data completeness (`recent_days_count`, `baseline_days_count`) now reflects the full usable baseline, increasing confidence in degradation measurements.
+
+#### RF-Aware Cause Scoring
+
+- **Before:** Root-cause score was simply `change_pct * severity`, which could over-rank huge low-impact changes (e.g., 80% user-drop) and under-rank operationally critical but smaller issues (e.g., 2% availability drop or RACH failure).
+- **After:** Scoring now prioritizes RF criticality and directness to the KPI:
+  ```python
+  score = (
+      severity_weight +                 # 1-5: service impact level
+      RF_priority_bonus +               # extra weight for critical causes
+      threshold_excess +                # how much the rule threshold was breached
+      capped_magnitude                  # bounded degradation size (−1000% to +1000%)
+  )
+  ```
+- **RF Priority Examples:**
+  - `Availability` issues: priority +5 (service impact overrides all)
+  - `E-RAB Drop Rate`, `RRC Setup Failure`: priority +4 (service-blocking)
+  - `Interference`, `RACH Failure`, `PRB Congestion`: priority +3 (capacity/quality path)
+  - `Active User Drop`, `Traffic Demand`: priority +1 (demand-side signal, not RF fault)
+- **Implementation:** [cause_detect_functions.py](./LTE_RAN_KPI_Analysis_Tool/cause_detect_functions.py) now includes `get_cause_rf_priority()` lookup table for each related counter.
+- **Effect:** Root-cause ranking now matches RF optimization triage order, not just magnitude.
+
+#### Confidence and Severity Output Columns
+
+- **New columns:**
+  - `rf_severity`: Impact label (`Normal`, `Medium`, `High`, `Critical`) based on degradation magnitude and KPI criticality.
+  - `analysis_confidence`: Data-quality and statistical label (`High`, `Medium`, `Low`) reflecting reliability of the measurement.
+  - `confidence_reason`: Human-readable explanation of why confidence is at this level (e.g., "Small sample size; t-test not applicable; degradation threshold crossed.").
+  - `significance_note`: Clarifies whether Welch's t-test agrees, disagrees, or is unavailable — and whether it blocks or advises only.
+- **Implementation:** Computed in [main_function_for_selected_kpi.py](./LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py) during final result assembly, using:
+  - Degradation magnitude and KPI type
+  - Data completeness (`recent_days_count`, `baseline_days_count`)
+  - Baseline quality (whether baseline is observed or imputed; whether it passed min-baseline filter)
+  - Statistical test result (p-value, t-statistic)
+  - Number of supporting causes
+- **Example:** A cell with `kpi_degradation_ratio = 85%`, `recent_days_count = 7`, `stat_significant = True`, and `number_of_detected_causes = 3` gets `rf_severity = Critical`, `analysis_confidence = High`.
+
+#### RCA Pattern Classification and Investigation Steps
+
+- **Before:** Root-cause analysis returned only the top-ranked counter name and a generic recommendation.
+- **After:** A two-stage RCA pipeline now classifies the operational pattern and provides step-by-step investigation guidance:
+  1. **Evidence Detection:** Related counters that crossed rule thresholds are scored and ranked (as above).
+  2. **Pattern Classification:** A KPI-specific triage function maps the evidence into one of eight operational patterns:
+     - `Outage`: Availability/unavailability (site, sector, or BBU level)
+     - `Congestion`: PRB/CCE/resource/admission pressure
+     - `Radio Quality`: CQI, BLER, MCS, SINR/RSRP/RSRQ degradation
+     - `Coverage`: TA/CEU/border-UE/overshooting/cell-not-best-server path
+     - `Interference`: UL/DL interference, noise rise, PIM/external source
+     - `Mobility`: HO success, SRVCC, RRC re-establishment, target-cell/neighbor path
+     - `Demand`: User/traffic demand change or traffic migration
+     - `Unknown`: No strong pattern detected
+- **KPI-Specific RCA Order:** Each KPI has a prioritized triage sequence. For example:
+  - **Availability:** `Outage > Congestion > Interference > Coverage > Radio Quality > Mobility > Demand`
+  - **DL Throughput:** `Outage > Interference > Congestion > Coverage > Radio Quality > Mobility > Demand`
+  - **Handover SR:** `Outage > Mobility > Coverage > Interference > Radio Quality > Congestion > Demand`
+- **New output columns:**
+  - `rca_pattern`: Final operational pattern classification (one of the eight above).
+  - `supporting_evidence`: Short summary of the top-ranked evidence supporting the selected pattern (e.g., "PRB util. 92%, User load +45%, Admission denials +120%").
+  - `next_investigation_steps`: Practical RF troubleshooting sequence for the pattern. Examples:
+    - For `Outage`: "1) Check alarms/logs 2) Verify site/sector availability 3) Check BBU/sector status 4) Review recent config changes."
+    - For `Congestion`: "1) Verify PRB/CCE utilization trend 2) Check user/traffic growth 3) Review load-balancing settings 4) Consider cell split or carrier upgrade."
+    - For `Radio Quality`: "1) Verify CQI/BLER distribution 2) Check SINR/RSRP maps 3) Review antenna parameters 4) Check for external interference."
+- **Implementation:** [cause_detect_functions.py](./LTE_RAN_KPI_Analysis_Tool/cause_detect_functions.py) includes:
+  - `classify_rca_pattern()`: Maps detected causes to an operational pattern using KPI-specific logic.
+  - `get_investigation_steps()`: Returns a structured guide for each pattern.
+- **Effect:** An RF engineer can now follow a clear diagnostic path instead of manually interpreting a list of counter changes.
+
+#### Example: DL Traffic Degradation with Improvements
+
+**Before the changes:**
+
+| Field | Value |
+|-------|-------|
+| KPI Status | Degraded (only if stat_significant) |
+| Main Cause | Active Users |
+| Cause Reasoning | change_pct (80%) × severity (1) = 80 (highest score) |
+| Recommendation | Check active users |
+| Confidence/Severity | (not provided) |
+
+**After the changes:**
+
+| Field | Value |
+|-------|-------|
+| KPI Status | Degraded |
+| RF Severity | High |
+| Analysis Confidence | Medium |
+| Confidence Reason | Threshold crossed (40% > 30%); 4/4 baseline days; t-test unavailable due to single-day recent; availability normal. |
+| Significance Note | T-test unavailable (sample too small); degradation stands on threshold alone. |
+| RCA Pattern | Congestion |
+| Supporting Evidence | PRB util. +22%, E-RAB attempts +35%, User load +18%, Active users +15% |
+| Next Investigation Steps | 1) Verify PRB/CCE utilization peak times 2) Check admission control thresholds 3) Review load-balancing to neighbors 4) Confirm recent traffic growth is organic. |
+| Main Root Cause | PRB Congestion |
+| Multi-Cause | Yes |
+| All Detected Causes | PRB congestion (120 threshold-excess), ERAB attempts (+35%), availability normal, user load (+18%), demand shift visible |
+
+This transformation allows an RF engineer to act on data: not just "something changed," but "here's what changed, why it matters operationally, and where to investigate first."
 
 ---
 

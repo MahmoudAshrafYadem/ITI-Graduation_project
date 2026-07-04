@@ -24,6 +24,7 @@ from clean_excel_and_helpers import (
 from main_function_for_selected_kpi import (
     analyze_selected_kpi, compute_day_by_day_degradation,
 )
+from cause_detect_functions import find_degradation_causes_vectorized
 from anomaly_detection import detect_kpi_anomalies_last_day
 from kpi_test_utils import build_frame, target_col
 
@@ -255,3 +256,152 @@ def test_residual_bug04_tiny_baseline_is_capped():
     assert calculate_degradation(1.0, 5.0, "low", is_ratio=False) == 80.0
     # Ratio KPIs use a signed difference and are never capped here.
     assert calculate_degradation(98.0, 99.5, "low", is_ratio=True) == pytest.approx(1.5)
+
+
+def test_baseline_imputation_is_used_by_main_analysis():
+    kpi = "DL Traffic"
+    tgt = target_col(kpi)
+    site, cell, local = "S1", "C1", 0
+    rows = []
+    recent_dates = pd.date_range(ANCHOR - pd.Timedelta(days=6), ANCHOR, freq="D")
+    baseline_dates = pd.date_range(ANCHOR - pd.Timedelta(days=13), ANCHOR - pd.Timedelta(days=7), freq="D")
+
+    for d in recent_dates:
+        rows.append({SITE_COL: site, CELL_COL: cell, LOCAL_CELL_COL: local, DATE_COL: d, tgt: 5.0})
+
+    missing_baseline = {baseline_dates[1], baseline_dates[3]}
+    for d in baseline_dates:
+        if d not in missing_baseline:
+            rows.append({SITE_COL: site, CELL_COL: cell, LOCAL_CELL_COL: local, DATE_COL: d, tgt: 10.0})
+
+    for d in missing_baseline:
+        for weeks_back in (1, 2):
+            rows.append({
+                SITE_COL: site, CELL_COL: cell, LOCAL_CELL_COL: local,
+                DATE_COL: d - pd.Timedelta(days=7 * weeks_back), tgt: 10.0,
+            })
+
+    out, _ = analyze_selected_kpi(
+        pd.DataFrame(rows), kpi, num_days=7, degradation_threshold=10.0,
+        require_complete_days=True, baseline_mode="last_week",
+        enable_significance_test=False,
+    )
+    assert out.shape[0] == 1
+    row = out.iloc[0]
+    assert row["kpi_degradation_ratio_%"] == pytest.approx(50.0)
+    assert row["analysis_confidence"] in {"Medium", "High"}
+
+
+def test_significance_is_advisory_not_hard_gate():
+    kpi = "DL Traffic"
+    df = build_frame(
+        [{"site": "S1", "cell": "C1", "local": 0, "recent": [1.0], "baseline": [10.0]}],
+        kpi,
+        anchor=ANCHOR,
+    )
+    out, _ = analyze_selected_kpi(
+        df, kpi, num_days=1, degradation_threshold=10.0,
+        require_complete_days=True, baseline_mode="last_week",
+        enable_significance_test=True,
+    )
+    assert out.shape[0] == 1
+    row = out.iloc[0]
+    assert row["kpi_degradation_ratio_%"] == pytest.approx(90.0)
+    assert row["stat_significant"] is False or row["stat_significant"] == False
+    assert "Advisory only" in row["significance_note"]
+
+
+def test_rf_aware_cause_ranking_prioritizes_service_critical_cause():
+    df = pd.DataFrame({
+        "recent_L.Traffic.ActiveUser.Dl.Avg": [20.0],
+        "baseline_L.Traffic.ActiveUser.Dl.Avg": [100.0],
+        "recent_Availability": [97.0],
+        "baseline_Availability": [99.0],
+    })
+    rules = [
+        {
+            "feature": "L.Traffic.ActiveUser.Dl.Avg",
+            "bad_direction": "low",
+            "threshold": 20,
+            "severity": 1,
+            "category": "Traffic Demand Drop",
+            "reason": "DL active users decreased.",
+            "recommended_action": "Validate demand.",
+        },
+        {
+            "feature": "Availability",
+            "bad_direction": "low",
+            "threshold": 1,
+            "severity": 5,
+            "category": "Availability Issue",
+            "reason": "Cell availability decreased.",
+            "recommended_action": "Check alarms and site availability.",
+        },
+    ]
+    result = find_degradation_causes_vectorized(df, rules)
+    assert result.loc[0, "main_cause_counter_or_kpi"] == "Availability"
+    assert result.loc[0, "rca_pattern"] == "Outage"
+    assert "site availability" in result.loc[0, "next_investigation_steps"].lower()
+
+
+def test_rca_pattern_classifies_throughput_congestion():
+    df = pd.DataFrame({
+        "selected_kpi_name": ["DL Throughput"],
+        "recent_(HU) DL PRB Utilization(%)": [95.0],
+        "baseline_(HU) DL PRB Utilization(%)": [55.0],
+        "recent_L.Traffic.ActiveUser.Dl.Avg": [120.0],
+        "baseline_L.Traffic.ActiveUser.Dl.Avg": [70.0],
+    })
+    rules = [
+        {
+            "feature": "(HU) DL PRB Utilization(%)",
+            "bad_direction": "high",
+            "threshold": 20,
+            "severity": 3,
+            "category": "DL Congestion",
+            "reason": "DL PRB utilization increased while DL throughput decreased.",
+            "recommended_action": "Check congestion and capacity.",
+        },
+        {
+            "feature": "L.Traffic.ActiveUser.Dl.Avg",
+            "bad_direction": "high",
+            "threshold": 20,
+            "severity": 2,
+            "category": "High User Load",
+            "reason": "Active DL users increased.",
+            "recommended_action": "Validate demand and load.",
+        },
+    ]
+    result = find_degradation_causes_vectorized(df, rules)
+    assert result.loc[0, "rca_pattern"] == "Congestion"
+    assert "PRB" in result.loc[0, "supporting_evidence"]
+    assert "capacity" in result.loc[0, "next_investigation_steps"].lower()
+
+
+def test_analyzer_output_includes_rca_columns():
+    kpi = "DL Traffic"
+    tgt = target_col(kpi)
+    rel = "(HU) DL PRB Utilization(%)"
+    rows = []
+    recent_dates = pd.date_range(ANCHOR - pd.Timedelta(days=6), ANCHOR, freq="D")
+    baseline_dates = pd.date_range(ANCHOR - pd.Timedelta(days=13), ANCHOR - pd.Timedelta(days=7), freq="D")
+    for d in recent_dates:
+        rows.append({
+            SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+            DATE_COL: d, tgt: 4.0, rel: 90.0,
+        })
+    for d in baseline_dates:
+        rows.append({
+            SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+            DATE_COL: d, tgt: 10.0, rel: 50.0,
+        })
+
+    out, _ = analyze_selected_kpi(
+        pd.DataFrame(rows), kpi, num_days=7, degradation_threshold=10.0,
+        require_complete_days=True, baseline_mode="last_week",
+        enable_significance_test=False,
+    )
+    assert out.shape[0] == 1
+    for col in ["rca_pattern", "supporting_evidence", "next_investigation_steps"]:
+        assert col in out.columns
+    assert out.iloc[0]["rca_pattern"] == "Congestion"
