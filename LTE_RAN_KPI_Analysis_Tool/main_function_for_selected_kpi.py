@@ -461,7 +461,12 @@ def analyze_selected_kpi(
     # baseline from historical same-weekday data (Stage 1), and fall back to
     # min_baseline_value as last resort (Stage 2). This runs BEFORE the
     # "both zero" exclusion so recoverable cells are not silently dropped.
-    if not comparison.empty:
+    #
+    # NOTE (BUG-09 FIX): Only apply fallback for KPIs where zero baseline is
+    # abnormal (bad_direction="low" for success/setup/availability rates).
+    # Skip for drop/failure rates (bad_direction="high") where zero baseline
+    # is valid and represents perfect health (e.g., E-RAB Drop Rate = 0%).
+    if not comparison.empty and bad_direction == "low":
         comparison = apply_baseline_fallback(
             comparison_df=comparison,
             df_full=df,

@@ -405,3 +405,137 @@ def test_analyzer_output_includes_rca_columns():
     for col in ["rca_pattern", "supporting_evidence", "next_investigation_steps"]:
         assert col in out.columns
     assert out.iloc[0]["rca_pattern"] == "Congestion"
+
+
+# --------------------------------------------------------------------------- #
+# BUG-09 — Ratio KPIs with baseline=0 should apply fallback (except drop rates)
+# --------------------------------------------------------------------------- #
+def test_bug09_ratio_kpi_zero_baseline_applies_fallback():
+    """
+    Test that ratio KPIs with bad_direction="low" (success/availability rates)
+    apply fallback logic when baseline=0%, recovering from historical data.
+    Contrast with drop rates (bad_direction="high") which keep zero as valid.
+    
+    Scenario:
+      - Availability has baseline=0% (abnormal, likely data missing)
+      - Recent period also 0%
+      - Without fix: degradation = 0-0 = 0%, NOT output (below threshold)
+      - With fix: fallback recovers baseline from history, degradation = ~100%,
+                  IS output as Degraded ✅
+    """
+    kpi = "Availability"
+    tgt = target_col(kpi)
+    unavail = "(HU) Cell Unavail Time (s)"
+    
+    rows = []
+    
+    # ---- Historical data (4+ weeks before recent) ----
+    # These weeks have healthy availability to recover baseline from
+    hist_dates = pd.date_range(ANCHOR - pd.Timedelta(days=56), ANCHOR - pd.Timedelta(days=29), freq="D")
+    for d in hist_dates:
+        rows.append({
+            SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+            DATE_COL: d, tgt: 99.5, unavail: 5.0,
+        })
+    
+    # ---- Baseline period (recent - 2 weeks) ----
+    # All zeros (data missing or cell down)
+    baseline_dates = pd.date_range(ANCHOR - pd.Timedelta(days=14), ANCHOR - pd.Timedelta(days=8), freq="D")
+    for d in baseline_dates:
+        rows.append({
+            SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+            DATE_COL: d, tgt: 0.0, unavail: np.nan,
+        })
+    
+    # ---- Recent period (last 1 day) ----
+    # Also zero (continuing problem)
+    rows.append({
+        SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+        DATE_COL: ANCHOR, tgt: 0.0, unavail: np.nan,
+    })
+    
+    # Analyze with recent=1 day, baseline=2 weeks
+    # Threshold=1% so any degradation >1% will be output
+    out, meta = analyze_selected_kpi(
+        pd.DataFrame(rows), kpi, num_days=1, degradation_threshold=1.0,
+        require_complete_days=False, baseline_mode="last_week",
+        enable_significance_test=False,
+    )
+    
+    # ---- Verify fix is working ----
+    # Before fix: No output row (degradation = 0-0 = 0%, below 1% threshold, cell excluded)
+    # After fix: Output row with degradation from recovered baseline
+    assert out.shape[0] >= 1, (
+        f"Expected at least 1 degraded cell. Got {out.shape[0]} rows. "
+        f"This means fallback didn't recover baseline properly. "
+        f"Incomplete cells: {meta.get('incomplete_df', pd.DataFrame()).shape[0]}"
+    )
+    
+    # Degradation should be significant (recovered baseline - 0%)
+    # The fallback recovers baseline from historical same-weekday median
+    deg = out.iloc[0]["kpi_degradation_ratio_%"]
+    baseline_recovered = out.iloc[0].get("baseline_avg_kpi", np.nan)
+    
+    # Key test: baseline_avg_kpi should NOT be 0 (fallback worked!)
+    assert baseline_recovered is not None and baseline_recovered > 0, (
+        f"Fallback should recover a non-zero baseline from historical data. "
+        f"Got baseline_avg_kpi = {baseline_recovered}. "
+        f"This indicates fallback logic was not applied properly."
+    )
+    
+    # For ratio KPIs, degradation is a signed difference: baseline - recent
+    # So if baseline = 50% and recent = 0%, degradation = 50 pp (percentage-point)
+    assert deg > 1.0, (
+        f"Expected significant degradation from recovered baseline. "
+        f"Got {deg}%. "
+        f"baseline_avg_kpi = {baseline_recovered}"
+    )
+
+
+
+
+def test_bug09_drop_rate_zero_baseline_skips_fallback():
+    """
+    Contrast test: E-RAB Drop Rate (bad_direction="high") should NOT apply
+    fallback when baseline=0% because zero is valid and represents perfect health.
+    
+    In fact, when drop rate = 0% (both recent and baseline), there's NO degradation
+    to report, so the cell should NOT appear in output (which is correct).
+    
+    This test verifies that we don't artificially inflate drop rates just because
+    fallback is skipped.
+    """
+    kpi = "E-RAB Drop Rate"
+    tgt = target_col(kpi)
+    abnorm_rel = "L.E-RAB.AbnormRel"
+    
+    rows = []
+    
+    # ---- Baseline period: perfect (0% drop rate) ----
+    baseline_dates = pd.date_range(ANCHOR - pd.Timedelta(days=14), ANCHOR - pd.Timedelta(days=8), freq="D")
+    for d in baseline_dates:
+        rows.append({
+            SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+            DATE_COL: d, tgt: 0.0, abnorm_rel: 0.0,
+        })
+    
+    # ---- Recent period: also perfect ----
+    rows.append({
+        SITE_COL: "S1", CELL_COL: "C1", LOCAL_CELL_COL: 0,
+        DATE_COL: ANCHOR, tgt: 0.0, abnorm_rel: 0.0,
+    })
+    
+    out, _ = analyze_selected_kpi(
+        pd.DataFrame(rows), kpi, num_days=1, degradation_threshold=0.5,
+        require_complete_days=False, baseline_mode="last_week",
+        enable_significance_test=False,
+    )
+    
+    # ---- Verify drop rate handles zero correctly ----
+    # When drop rate = 0% (both recent and baseline), there's NO degradation
+    # So the cell should NOT appear in output (analyzer returns only degraded cells)
+    # This is correct behavior! We don't want to artificially flag perfect drop rates
+    assert out.shape[0] == 0, (
+        f"Expected NO output row for perfect drop rate (0%). "
+        f"Got {out.shape[0]} rows. Perfect drop rates should not be flagged as degraded."
+    )
