@@ -958,8 +958,9 @@ such below.
 
 **Reliability & dependencies**
 
-- **BUG-09 — `requirements.txt` matches actual imports**: added `streamlit`, `plotly`, `scikit-learn`, `xgboost`, `statsmodels`; removed `xlrd` (`xlrd ≥ 2.0` can no longer read `.xlsx`, so listing it is misleading and risky).
+- **BUG-09 — baseline fallback for zero-baseline ratio KPIs** (`main_function_for_selected_kpi.py`): ratio KPIs (Availability, RRC SR, ERAB Setup SR) with `bad_direction="low"` now apply historical fallback when `baseline=0%`, correctly flagging degraded performance instead of masking it as normal. Drop/failure rates with `bad_direction="high"` skip fallback (zero baseline is valid/desired). Prevents false "Normal" status for cells showing 0% availability when they should be flagged as having degraded performance.
 - **BUG-10 — unexpected errors are surfaced, not swallowed** (`clean_excel_and_helpers.py`, `combined_degraded_kpi.py`): `perform_ttest` no longer wraps its body in a bare `except Exception: return (False, nan, nan)`. Expected degenerate-input errors are caught narrowly; anything unexpected is re-surfaced via a `RuntimeWarning` (still returning a safe result so one odd cell can't abort a batch). The per-KPI batch loop now logs the full traceback on failure.
+- **BUG-11 — `requirements.txt` matches actual imports**: added `streamlit`, `plotly`, `scikit-learn`, `xgboost`, `statsmodels`; removed `xlrd` (`xlrd ≥ 2.0` can no longer read `.xlsx`, so listing it is misleading and risky).
 
 **Performance (output-preserving)**
 
