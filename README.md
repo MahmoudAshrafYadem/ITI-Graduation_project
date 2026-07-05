@@ -341,19 +341,39 @@ imputed_value = median(same_weekday_values_over_last_N_weeks)
 - Imputation is materialized into the baseline daily rows used by the day-by-day comparator, so missing baseline days can still participate when enough same-weekday history exists
 - Recent window is never imputed, so real outages or missing current measurements are not hidden
 
-#### 3.5.4 Baseline Fallback (Ratio vs Non-Ratio Handling)
+**Relationship to Baseline Resolution:** Imputation fills missing days within the baseline period. After imputation, the **Baseline Resolution Policy** (Section 3.5.4) determines how to interpret the aggregated baseline value when comparing to recent period.
 
-The fallback logic now distinguishes between **ratio KPIs** (percentages like RRC SR, Drop Rate, HO SR) and **non-ratio KPIs** (volumes like Traffic, Throughput):
+#### 3.5.4 Baseline Resolution Policy (Ratio vs Non-Ratio Handling)
+
+The system distinguishes three baseline states:
+
+1. **Missing baseline** (`NaN`): No usable observation exists
+2. **Measured zero baseline** (`0`): A real measurement of zero
+3. **Valid positive baseline** (`> 0`): Normal case, use directly
+
+The resolution rules are centralized in `data_quality.py`:
 
 **For ratio KPIs:**
-- **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
-- **Zero baseline** (actual 0%): pass through as `0` — the signed-difference formula has no denominator, so zero is safe and correctly represents outage recovery (if recent > 0, it's improvement; if recent = 0, degradation is 0)
+| Baseline | Recent | Resolution |
+|----------|--------|------------|
+| NaN      | Any    | History → Min |
+| 0        | >0     | Keep 0 |
+| 0        | 0      | History → Min* |
+| >0       | Any    | Use baseline |
 
 **For non-ratio KPIs:**
-- **NaN baseline** (missing data): attempt historical fallback → then `min_baseline_value`
-- **Zero baseline** (actual 0 GB/Mbps): attempt historical fallback first → then marked as `NaN` with source `no_usable_baseline` and **excluded** from analysis (the old `0.001` placeholder was removed because it manufactured false signals, e.g., dead cells scoring +100%)
+| Baseline | Recent | Resolution |
+|----------|--------|------------|
+| NaN      | Any    | History → Min |
+| 0        | >0     | Keep 0 (Normal) |
+| 0        | 0      | History → Min |
+| >0       | Any    | Use baseline |
 
-This ensures ratio KPIs with a legitimate 0% baseline are evaluated correctly without artificial floor values.
+`* Exception: E-RAB Drop Rate has `use_historical_fallback: False`, so 0→0 stays as Normal (0%).`
+
+**Configuration:** Each KPI has `is_ratio` and `use_historical_fallback` flags in `KPI_Configuration.py` instead of hardcoded logic.
+
+**Exclusion Rules:** Cells are only excluded when `baseline` remains `NaN` after resolution. A measured zero baseline is valid for both ratio (signed difference) and non-ratio (recovery indicator) KPIs.
 
 ---
 
@@ -898,196 +918,62 @@ RF Optimization Analysis Report
 
 ## 12. Recent Changes
 
-### 12.1 Unit-Aware Change Calculation & Baseline Handling
+### Baseline Resolution Policy (Ratio vs Non-Ratio Handling)
 
-Major refactor to correctly handle different metric units in root cause detection and baseline fallback:
+**What changed:** Implemented the baseline resolution redesign to distinguish between missing (NaN), measured zero, and valid positive baselines.
 
-- **Unit-aware routing** in `cause_detect_functions.py`: `classify_unit()` routes each related counter to the correct calculation:
-  - **dB/dBm** features (RSRP, RSRQ, SINR, interference): signed absolute difference in dB — avoids sign flip from negative baselines
-  - **Ratio/percentage** features (RRC SR%, Drop Rate%, PRB%): signed absolute difference in percentage points
-  - **Counters/volumes** (attempts, GBytes, Mbps): relative percentage change `((baseline - recent) / baseline) × 100`
-- **Baseline fallback simplified for ratio KPIs**: zero baseline now passes through as `0` directly — signed difference has no denominator, so `0` is safe and correctly represents outage recovery. Removed vestigial `0.001` substitution for ratio KPIs.
-- **Post-fallback exclusion fixed**: cells with `recent_avg_kpi = 0` or `baseline_avg_kpi = 0` are no longer conflated with missing data (`.isna()` check only). Genuine outages (e.g., SR = 0%, Traffic = 0 GB) now pass through to degradation calculation instead of being silently dropped.
-- **Root cause detection** updated in both vectorized and row-fallback paths to use the new routing logic.
+**Where:** 
+- `data_quality.py`: Added `resolve_baseline()` and `apply_baseline_fallback()` centralized functions
+- `main_function_for_selected_kpi.py`: Integrated resolution policy for target KPI and related counters
 
-### 12.2 Anomaly Detection Baseline Fix
+**Resolution Rules:**
 
-- `anomaly_detection.py` now **always uses the last 24 days (all weekdays)** as the historical baseline for z-score spike detection
-- Compares last-day value against the full 24-day distribution of that specific cell
-- Provides more robust detection than same-weekday matching by using all available recent history
-- Z-score thresholding remains the primary spike detection method
+| For ratio KPIs: | Baseline | Recent | Resolution | | For non-ratio KPIs: | Baseline | Recent | Resolution |
+|-----------------|----------|--------|------------| |----------|--------|------------|
+| | NaN | Any | History → Min | | NaN | Any | History → Min |
+| | 0 | >0 | Keep 0 (recovered) | | 0 | >0 | Keep 0 (Normal) |
+| | 0 | 0 | History → Min* | | 0 | 0 | History → Min |
+| | >0 | Any | Use baseline | | >0 | Any | Use baseline |
 
-### 12.3 Streamlit Web Dashboard
+`* Exception: E-RAB Drop Rate has `use_historical_fallback: False`, so 0→0 stays as Normal (0%).`
 
-New `app_streamlit.py` provides a browser-based interface:
-- File upload with automatic sheet detection
-- Single KPI and All-KPIs analysis modes
-- Interactive filters (site, cell, degradation range)
-- Tabbed results: Degraded Cells, Charts, Trends, Exports
-- Trend analysis with enhancement potential calculation
-- Direct CSV/Excel download buttons
-
-### 12.4 KPI Configuration Updates
-
-| KPI | Change | Reason |
-|-----|--------|--------|
-| **Drop Rate** → **E-RAB Drop Rate** | Renamed for clarity | Consistent naming |
-| **E-RAB Drop Rate** threshold | 20.0% → 0.5% | Drop rate is already a percentage; 0.5% is a meaningful threshold |
-| **VoLTE KPIs** threshold | 5.0% → 2.0% | VQI (1-5 scale) requires tighter threshold |
-
-### 12.5 Bug-Fix Series — Correctness & Performance
-
-A consolidated log of the correctness, reliability and performance fixes applied
-to the analysis engine, grouped by bug ID (each maps to a stand-alone patch).
-Behaviour-preserving fixes were verified to reproduce the prior results **exactly**
-on the *New Cairo* dataset; the performance fixes leave outputs unchanged; the two
-intentional behaviour changes (BUG-07, and the BUG-04 winsor cap) are flagged as
-such below.
-
-**Data-quality & baseline correctness**
-
-- **BUG-04 — non-ratio zero-baseline `0.001` placeholder removed** (`data_quality.py`, patch `0001`): a genuinely-zero non-ratio baseline (no observation, no recoverable history) was substituted with `0.001` as a fake "outage recovery" reference. Because relative-% degradation divides by the baseline, this manufactured false signals — a dead cell (recent `0`) scored `+100%`, and a cell coming online produced a large negative artifact that skewed the aggregates. Such baselines are now marked `NaN` with source `no_usable_baseline` and excluded explicitly. (Completes the ratio-side removal done upstream in `ce2dc00`.)
-- **BUG-02 — unit-aware outage retention in post-fallback exclusion** (`main_function_for_selected_kpi.py`, patch `0002`): a measured recent value of `0` against a healthy baseline is a genuine outage (traffic → 0, RRC/E-RAB SR → 0%) and the worst-case degradation, but it was being dropped as "no data". The exclusion now separates *no data* (recent or baseline `NaN`) from *valid zero*, dropping only `NaN` — plus, for relative-% (non-ratio) KPIs, a baseline `≤ 0` (undefined denominator). Ratio/dB KPIs compare by signed difference, so a zero baseline is valid and kept. Together with BUG-04 this removes the dead-cell false positive (`0` in both periods) while retaining true outages.
-- **BUG-03 — aggregate sub-daily rows in day-by-day comparison** (`main_function_for_selected_kpi.py`, patch `0003`): `compute_day_by_day_degradation` assumed one row per `(cell, date)`. A sub-daily/hourly export normalized to date level yields duplicate `DatetimeIndex` entries, so `set_index(date)[kpi]` returned a `Series` and `pd.isna(Series)` raised *"The truth value of a Series is ambiguous"*, crashing the core analysis. Values are now aggregated per calendar day (mean, matching `compute_baseline_imputed`); a verified no-op on daily data and correct on hourly input.
-
-**Statistical significance & anomaly detection**
-
-- **BUG-05 — significance t-test keyed on the full cell identity** (`main_function_for_selected_kpi.py`): the Welch t-test grouped observed values by `(eNodeB Name, Cell Name)` only, dropping `LocalCell Id`. Harmless while `Cell ↔ LocalCell` is 1:1, but on any site where one `Cell Name` maps to several `LocalCell Id`s it pooled unrelated series into a single test. Now grouped once by the full `CELL_ID_COLS` identity and looked up by 3-tuple key.
-- **BUG-06 — finite signed *t* for constant-but-different samples** (`clean_excel_and_helpers.py`): two constant samples with different means have zero within-sample variance, so SciPy's Welch *t* is `NaN`; the old code propagated that `NaN` and silently dropped the cell from significance gating. `perform_ttest` now returns a signed infinity (sign follows `recent − baseline`) with `p = 0.0` — a real, maximally-significant difference.
-- **BUG-07 — robust (MAD-based) spike z-score** *(intentional behaviour change)* (`anomaly_detection.py`): spike detection used `(value − median) / std` over the 24-day history, but `std` is inflated by the very outliers it should catch, so a genuine spike could mask its own scale. The scale is now `1.4826 × MAD` (a consistent, outlier-resistant estimator of σ), falling back to `std` only when the history is majority-constant and `MAD = 0`. The misleading `"SAME WEEKDAY"` log line and module docstring were corrected to describe the actual all-24-day lookback. This is deliberately **more** sensitive on very stable KPIs.
-
-**Reliability & dependencies**
-
-- **BUG-09 — baseline fallback for zero-baseline ratio KPIs** (`main_function_for_selected_kpi.py`): ratio KPIs (Availability, RRC SR, ERAB Setup SR) with `bad_direction="low"` now apply historical fallback when `baseline=0%`, correctly flagging degraded performance instead of masking it as normal. Drop/failure rates with `bad_direction="high"` skip fallback (zero baseline is valid/desired). Prevents false "Normal" status for cells showing 0% availability when they should be flagged as having degraded performance.
-- **BUG-10 — unexpected errors are surfaced, not swallowed** (`clean_excel_and_helpers.py`, `combined_degraded_kpi.py`): `perform_ttest` no longer wraps its body in a bare `except Exception: return (False, nan, nan)`. Expected degenerate-input errors are caught narrowly; anything unexpected is re-surfaced via a `RuntimeWarning` (still returning a safe result so one odd cell can't abort a batch). The per-KPI batch loop now logs the full traceback on failure.
-- **BUG-11 — `requirements.txt` matches actual imports**: added `streamlit`, `plotly`, `scikit-learn`, `xgboost`, `statsmodels`; removed `xlrd` (`xlrd ≥ 2.0` can no longer read `.xlsx`, so listing it is misleading and risky).
-
-**Performance (output-preserving)**
-
-- **BUG-08 — vectorized the per-cell hot loops** (`main_function_for_selected_kpi.py`, `anomaly_detection.py`): both `compute_day_by_day_degradation` and the anomaly detector rebuilt a full-frame boolean mask for *every* cell (`O(cells × rows)`). They now do the same arithmetic with `groupby`/pivot passes (`O(rows)`), verified frame-for-frame against the originals. End-to-end this cut anomaly detection from **~6.4 min to ~5 s** and roughly halved per-KPI degradation runtime, with identical results.
-
-**Residual**
-
-- **BUG-04 (residual) — winsorize tiny-baseline degradation** *(intentional, oracle-safe)* (`clean_excel_and_helpers.py`, `main_function_for_selected_kpi.py`): a near-zero but strictly positive baseline (≈ `0.0096` GB) made the relative-% metric explode (e.g. `−8743%`), skewing the mean/max stats. The non-ratio relative change is now clipped to `± DEGRADATION_PCT_CAP` (`1000%`) — far above any real degradation (threshold is single/double digits), so no classification changes; only the artifact tails are clipped. Scalar and vectorized paths share the cap.
-
-**Verification.** The verified baseline (current `main`) is preserved exactly after all behaviour-preserving fixes: **DL Traffic** 71 degraded / 1179 analyzed, **RRC Setup SR** 0 / 1141, **E-RAB Drop Rate** 0 / 1141 — degraded sets, counts and full result frames match to `1e-9`. A regression suite (`LTE_RAN_KPI_Analysis_Tool/test_kpi_bugs.py`, one focused test per bug) accompanies the changes: all tests pass on the fixed code and the behavioural tests fail on the pre-fix code.
-
-### 12.6 RF Optimization Logic Improvements — Advisory Significance, RCA Patterns, and Confidence Scoring
-
-Major upgrade to align the analyzer with real-world RF optimization workflows, transforming it from a rule-based detector into an RF decision-support engine:
-
-#### Advisory Statistical Significance (No Hard Gate)
-
-- **Before:** `stat_significant == True` was required for KPI to be flagged as degraded. Small-sample outages could be silently rejected.
-- **After:** Welch's t-test is now purely advisory evidence, not a blocker. A KPI crossing the degradation threshold is always flagged as `Degraded`, while p-value/significance contribute to `analysis_confidence`.
-- **Implementation:** [main_function_for_selected_kpi.py](./LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py) now computes `rf_severity`, `analysis_confidence`, and `confidence_reason` independently of the t-test result.
-- **Example:** A cell with Availability drop from 100% to 0% is now marked `Degraded` with `Confidence: Medium` (degradation clear, but sample size small), instead of being hidden due to `p_value = NaN`.
-
-#### Baseline Imputation Actually Used
-
-- **Before:** Imputed baseline days were computed but not fed into day-by-day degradation calculation. Metadata said imputation was used; actual comparison used only observed baseline days.
-- **After:** Imputed baselines are now materialized and passed to `compute_day_by_day_degradation()` for the target KPI, so analysis reflects the documented claim.
-- **Implementation:** `_materialize_imputed_baseline_df()` helper creates a blended frame with observed days preserved and missing same-weekday days filled from historical medians, respecting all data-quality constraints.
-- **Effect:** Data completeness (`recent_days_count`, `baseline_days_count`) now reflects the full usable baseline, increasing confidence in degradation measurements.
-
-#### RF-Aware Cause Scoring
-
-- **Before:** Root-cause score was simply `change_pct * severity`, which could over-rank huge low-impact changes (e.g., 80% user-drop) and under-rank operationally critical but smaller issues (e.g., 2% availability drop or RACH failure).
-- **After:** Scoring now prioritizes RF criticality and directness to the KPI:
-  ```python
-  score = (
-      severity_weight +                 # 1-5: service impact level
-      RF_priority_bonus +               # extra weight for critical causes
-      threshold_excess +                # how much the rule threshold was breached
-      capped_magnitude                  # bounded degradation size (−1000% to +1000%)
-  )
-  ```
-- **RF Priority Examples:**
-  - `Availability` issues: priority +5 (service impact overrides all)
-  - `E-RAB Drop Rate`, `RRC Setup Failure`: priority +4 (service-blocking)
-  - `Interference`, `RACH Failure`, `PRB Congestion`: priority +3 (capacity/quality path)
-  - `Active User Drop`, `Traffic Demand`: priority +1 (demand-side signal, not RF fault)
-- **Implementation:** [cause_detect_functions.py](./LTE_RAN_KPI_Analysis_Tool/cause_detect_functions.py) now includes `get_cause_rf_priority()` lookup table for each related counter.
-- **Effect:** Root-cause ranking now matches RF optimization triage order, not just magnitude.
-
-#### Confidence and Severity Output Columns
-
-- **New columns:**
-  - `rf_severity`: Impact label (`Normal`, `Medium`, `High`, `Critical`) based on degradation magnitude and KPI criticality.
-  - `analysis_confidence`: Data-quality and statistical label (`High`, `Medium`, `Low`) reflecting reliability of the measurement.
-  - `confidence_reason`: Human-readable explanation of why confidence is at this level (e.g., "Small sample size; t-test not applicable; degradation threshold crossed.").
-  - `significance_note`: Clarifies whether Welch's t-test agrees, disagrees, or is unavailable — and whether it blocks or advises only.
-- **Implementation:** Computed in [main_function_for_selected_kpi.py](./LTE_RAN_KPI_Analysis_Tool/main_function_for_selected_kpi.py) during final result assembly, using:
-  - Degradation magnitude and KPI type
-  - Data completeness (`recent_days_count`, `baseline_days_count`)
-  - Baseline quality (whether baseline is observed or imputed; whether it passed min-baseline filter)
-  - Statistical test result (p-value, t-statistic)
-  - Number of supporting causes
-- **Example:** A cell with `kpi_degradation_ratio = 85%`, `recent_days_count = 7`, `stat_significant = True`, and `number_of_detected_causes = 3` gets `rf_severity = Critical`, `analysis_confidence = High`.
-
-#### RCA Pattern Classification and Investigation Steps
-
-- **Before:** Root-cause analysis returned only the top-ranked counter name and a generic recommendation.
-- **After:** A two-stage RCA pipeline now classifies the operational pattern and provides step-by-step investigation guidance:
-  1. **Evidence Detection:** Related counters that crossed rule thresholds are scored and ranked (as above).
-  2. **Pattern Classification:** A KPI-specific triage function maps the evidence into one of eight operational patterns:
-     - `Outage`: Availability/unavailability (site, sector, or BBU level)
-     - `Congestion`: PRB/CCE/resource/admission pressure
-     - `Radio Quality`: CQI, BLER, MCS, SINR/RSRP/RSRQ degradation
-     - `Coverage`: TA/CEU/border-UE/overshooting/cell-not-best-server path
-     - `Interference`: UL/DL interference, noise rise, PIM/external source
-     - `Mobility`: HO success, SRVCC, RRC re-establishment, target-cell/neighbor path
-     - `Demand`: User/traffic demand change or traffic migration
-     - `Unknown`: No strong pattern detected
-- **KPI-Specific RCA Order:** Each KPI has a prioritized triage sequence. For example:
-  - **Availability:** `Outage > Congestion > Interference > Coverage > Radio Quality > Mobility > Demand`
-  - **DL Throughput:** `Outage > Interference > Congestion > Coverage > Radio Quality > Mobility > Demand`
-  - **Handover SR:** `Outage > Mobility > Coverage > Interference > Radio Quality > Congestion > Demand`
-- **New output columns:**
-  - `rca_pattern`: Final operational pattern classification (one of the eight above).
-  - `supporting_evidence`: Short summary of the top-ranked evidence supporting the selected pattern (e.g., "PRB util. 92%, User load +45%, Admission denials +120%").
-  - `next_investigation_steps`: Practical RF troubleshooting sequence for the pattern. Examples:
-    - For `Outage`: "1) Check alarms/logs 2) Verify site/sector availability 3) Check BBU/sector status 4) Review recent config changes."
-    - For `Congestion`: "1) Verify PRB/CCE utilization trend 2) Check user/traffic growth 3) Review load-balancing settings 4) Consider cell split or carrier upgrade."
-    - For `Radio Quality`: "1) Verify CQI/BLER distribution 2) Check SINR/RSRP maps 3) Review antenna parameters 4) Check for external interference."
-- **Implementation:** [cause_detect_functions.py](./LTE_RAN_KPI_Analysis_Tool/cause_detect_functions.py) includes:
-  - `classify_rca_pattern()`: Maps detected causes to an operational pattern using KPI-specific logic.
-  - `get_investigation_steps()`: Returns a structured guide for each pattern.
-- **Effect:** An RF engineer can now follow a clear diagnostic path instead of manually interpreting a list of counter changes.
-
-#### Example: DL Traffic Degradation with Improvements
-
-**Before the changes:**
-
-| Field | Value |
-|-------|-------|
-| KPI Status | Degraded (only if stat_significant) |
-| Main Cause | Active Users |
-| Cause Reasoning | change_pct (80%) × severity (1) = 80 (highest score) |
-| Recommendation | Check active users |
-| Confidence/Severity | (not provided) |
-
-**After the changes:**
-
-| Field | Value |
-|-------|-------|
-| KPI Status | Degraded |
-| RF Severity | High |
-| Analysis Confidence | Medium |
-| Confidence Reason | Threshold crossed (40% > 30%); 4/4 baseline days; t-test unavailable due to single-day recent; availability normal. |
-| Significance Note | T-test unavailable (sample too small); degradation stands on threshold alone. |
-| RCA Pattern | Congestion |
-| Supporting Evidence | PRB util. +22%, E-RAB attempts +35%, User load +18%, Active users +15% |
-| Next Investigation Steps | 1) Verify PRB/CCE utilization peak times 2) Check admission control thresholds 3) Review load-balancing to neighbors 4) Confirm recent traffic growth is organic. |
-| Main Root Cause | PRB Congestion |
-| Multi-Cause | Yes |
-| All Detected Causes | PRB congestion (120 threshold-excess), ERAB attempts (+35%), availability normal, user load (+18%), demand shift visible |
-
-This transformation allows an RF engineer to act on data: not just "something changed," but "here's what changed, why it matters operationally, and where to investigate first."
+**Configuration:** Each KPI has `is_ratio` and `use_historical_fallback` flags in `KPI_Configuration.py`.
 
 ---
 
-## 13. Extending the System
+### Cell Health Pre-Classification — Outage Detection
+
+**What changed:** Added pre-classification to detect complete cell outages before RCA processing.
+
+**Where:** `cause_detect_functions.py` and `main_function_for_selected_kpi.py`
+
+**Detection:** Both DL Traffic = 0 AND UL Traffic = 0 in recent period.
+
+**Fixes Applied:**
+- Index alignment error fixed: was using `degraded_cells[~dead_cells_mask]` where mask belonged to `degraded_with_traffic`. Now uses merge-based filtering by cell identity (`CELL_ID_COLS`).
+- Fixed `apply_baseline_fallback()` index alignment (changed list assignment to `.at[idx, ...]`).
+
+**Outage RCA Output:**
+```
+main_cause_counter_or_kpi: "Cell Outage"
+main_root_cause_category: "Cell Outage"
+main_degradation_reason: "Cell has zero DL and UL traffic during the recent period. Degradation is consistent with a complete service outage."
+supporting_evidence: "DL Traffic = 0 | UL Traffic = 0 | No service observed during recent period."
+next_investigation_steps: "Check: Site power, Transmission, Transport connectivity, Node alarms, Cell lock state, Backhaul."
+```
+
+**Example:**
+```
+Availability: 100 → 0
+DL Traffic = 0
+UL Traffic = 0
+```
+**Before:** "No strong related counter degraded."
+**After:** "Cell Outage" with actionable guidance.
+
+---
+
+### 13. Extending the System
 
 ### 13.1 Adding New Counter Types
 

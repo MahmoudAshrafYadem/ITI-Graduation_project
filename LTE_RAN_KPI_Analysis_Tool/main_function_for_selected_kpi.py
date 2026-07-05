@@ -42,8 +42,11 @@ from clean_excel_and_helpers import (
 from cause_detect_functions import (
     find_degradation_causes_vectorized,
     find_degradation_causes_row,
+    _is_ratio_feature,
+    detect_cell_outage,
+    generate_outage_rca,
 )
-from data_quality import validate_columns, compute_baseline_imputed, apply_baseline_fallback
+from data_quality import validate_columns, compute_baseline_imputed, apply_baseline_fallback, resolve_baseline
 
 
 def _empty_quarantine():
@@ -77,8 +80,8 @@ def _vectorized_degradation(recent, baseline, bad_direction, is_ratio):
     Mirrors clean_excel_and_helpers.calculate_degradation exactly so the
     vectorized day-by-day path produces identical numbers to the old scalar
     loop: ratio/dB KPIs use a signed difference (no denominator); non-ratio
-    KPIs use a relative %% change and yield NaN when the baseline is 0; NaN
-    inputs propagate to NaN. (Supports BUG-08 vectorization.)
+    KPIs use a relative %% change and yield 0 when baseline is 0 and recent > 0
+    (Normal status, not degraded). NaN inputs propagate to NaN.
     """
     recent = np.asarray(recent, dtype="float64")
     baseline = np.asarray(baseline, dtype="float64")
@@ -91,7 +94,7 @@ def _vectorized_degradation(recent, baseline, bad_direction, is_ratio):
             deg = (baseline - recent) / baseline * 100.0
         else:
             deg = (recent - baseline) / baseline * 100.0
-    deg = np.where(baseline == 0, np.nan, deg)
+    deg = np.where(baseline == 0, 0.0, deg)
     # Winsorize to match calculate_degradation's DEGRADATION_PCT_CAP so the
     # vectorized day-by-day path and the scalar path agree exactly, including on
     # the near-zero-baseline artifact tails (residual of BUG-04).
@@ -466,7 +469,7 @@ def analyze_selected_kpi(
     # abnormal (bad_direction="low" for success/setup/availability rates).
     # Skip for drop/failure rates (bad_direction="high") where zero baseline
     # is valid and represents perfect health (e.g., E-RAB Drop Rate = 0%).
-    if not comparison.empty and bad_direction == "low":
+    if not comparison.empty:
         comparison = apply_baseline_fallback(
             comparison_df=comparison,
             df_full=df,
@@ -476,21 +479,27 @@ def analyze_selected_kpi(
             baseline_start=baseline_start,
             baseline_end=baseline_end,
             min_baseline_value=min_baseline_value,
+            use_historical_fallback=config.get("use_historical_fallback", True),
+            is_ratio=is_ratio,
             lookback_weeks=5,
             min_samples=1,
             log_callback=log_msg,
-            is_ratio=is_ratio,
         )
 
     # ---- NEW: Recompute kpi_degradation_ratio_% for cells that used fallback ----
-    # When the day-by-day comparison couldn't compute a degradation ratio
-    # (because the baseline was NaN), but the fallback recovered a
-    # baseline, we recompute the ratio here using the patched baseline_avg_kpi
-    # and the observed recent_avg_kpi. This gives those cells a fair chance
+    # When the day-by-day comparison computed 0 (for both-zero case) or NaN
+    # (for missing baseline) but the fallback recovered a non-zero baseline,
+    # we recompute the ratio here. This gives those cells a fair chance
     # to be evaluated against the threshold.
     if not comparison.empty:
         fallback_mask = comparison.get("baseline_fallback_used", False) == True
-        needs_recompute = fallback_mask & comparison["kpi_degradation_ratio_%"].isna()
+        if "kpi_degradation_ratio_%" in comparison.columns:
+            needs_recompute = fallback_mask & (
+                comparison["kpi_degradation_ratio_%"].isna() | 
+                comparison["kpi_degradation_ratio_%"] == 0.0
+            )
+        else:
+            needs_recompute = fallback_mask
         if needs_recompute.any():
             n_recompute = int(needs_recompute.sum())
             log_msg(f"Recomputing degradation ratio for {n_recompute} cells with fallback baseline")
@@ -504,42 +513,23 @@ def analyze_selected_kpi(
                     comparison.at[idx, "days_compared"] = comparison.at[idx, "recent_days_count"]
 
     # ---- Post-fallback exclusion: keep every analysable cell, drop the rest ----
-    #
     # A cell is analysable only when it has BOTH a recent observation and a
-    # *usable* baseline reference. We separate "no data" from "valid zero":
-    #
-    #   * recent_avg_kpi is NaN      -> no current measurement at all.
-    #   * baseline_avg_kpi is NaN    -> no baseline survived the fallback chain
-    #                                   (observation -> history -> min_value);
-    #                                   marked NaN upstream when no reference exists.
-    #   * baseline_avg_kpi <= 0 on a relative-% (non-ratio) KPI -> no usable
-    #     reference: degradation = change / baseline is undefined at 0 and would
-    #     otherwise fabricate a result (dead cell -> +100%, new cell -> huge
-    #     negative). Ratio / dB KPIs compare via a *signed difference* with no
-    #     denominator, so a zero baseline is perfectly valid for them and is kept.
-    #
-    # A *measured* recent value of 0 against a healthy baseline is NOT excluded:
-    # it is a genuine outage (traffic -> 0, RRC/E-RAB Setup SR -> 0%) and must be
-    # scored as the worst-case degradation it represents. (BUG-02)
+    # *usable* baseline reference after resolution.
     if not comparison.empty:
         recent_missing = comparison["recent_avg_kpi"].isna()
         baseline_missing = comparison["baseline_avg_kpi"].isna()
-        if is_ratio:
-            no_reference = baseline_missing
-        else:
-            no_reference = baseline_missing | (comparison["baseline_avg_kpi"] <= 0)
-        unrecoverable = recent_missing | no_reference
+        
+        unrecoverable = recent_missing | baseline_missing
+        
         if unrecoverable.any():
             _record(
                 comparison[unrecoverable],
-                "excluded: no recent observation or no usable baseline reference"
+                "excluded: no recent observation or no usable baseline after resolution"
             )
             comparison = comparison[~unrecoverable].copy()
             log_msg(
                 f"INFO: {int(unrecoverable.sum())} cells excluded - no usable "
-                f"recent/baseline (recent_missing={int(recent_missing.sum())}, "
-                f"no_baseline_reference={int(no_reference.sum())}); "
-                f"measured-zero cells with a healthy baseline are retained as outages"
+                f"recent value or baseline could not be resolved."
             )
 
     # No min_baseline_value exclusion anymore (fallback handles it)
@@ -685,6 +675,66 @@ def analyze_selected_kpi(
     metadata["available_related_features"] = available_related_features
     metadata["missing_related_features"] = missing_related_features
 
+    # ---- NEW: Cell Health Pre-Classification ----
+    # Check for cell outage before running normal RCA
+    # This applies to Availability, Accessibility, Retainability, Mobility KPIs
+    dead_cells_rca = None
+    kpi_category = config.get("category", "")
+    outage_kpi_categories = ["Availability", "Accessibility", "Retainability", "Mobility"]
+
+    dl_traffic_col = "(HU) DL Traffic Volume (GBytes)"
+    ul_traffic_col = "(HU) UL Traffic Volume (GBytes)"
+
+    # Check if this KPI category should perform outage detection and traffic columns exist
+    should_check_outage = (
+        kpi_category in outage_kpi_categories and
+        dl_traffic_col in df.columns and
+        ul_traffic_col in df.columns
+    )
+
+    if should_check_outage:
+        # Merge traffic data into degraded cells for outage detection
+        traffic_reason_cols = CELL_ID_COLS + [DATE_COL] + [dl_traffic_col, ul_traffic_col]
+        df_traffic = df[traffic_reason_cols].copy()
+        df_traffic[DATE_COL] = pd.to_datetime(df_traffic[DATE_COL], errors="coerce").dt.normalize()
+        df_traffic[dl_traffic_col] = clean_numeric_series(df_traffic[dl_traffic_col])
+        df_traffic[ul_traffic_col] = clean_numeric_series(df_traffic[ul_traffic_col])
+
+        # Get recent traffic aggregates
+        recent_traffic_df = df_traffic[(df_traffic[DATE_COL] >= recent_start) & (df_traffic[DATE_COL] <= recent_end)].copy()
+        traffic_agg = recent_traffic_df.groupby(CELL_ID_COLS).agg({
+            dl_traffic_col: "mean",
+            ul_traffic_col: "mean"
+        }).reset_index()
+        traffic_agg.columns = CELL_ID_COLS + [f"recent_{dl_traffic_col}_mean", f"recent_{ul_traffic_col}_mean"]
+
+        # Merge traffic into degraded cells and detect outages
+        degraded_with_traffic = degraded_cells.merge(traffic_agg, on=CELL_ID_COLS, how="left")
+
+        # Find dead cells (both DL and UL traffic = 0)
+        dead_cells_mask = (
+            (degraded_with_traffic[f"recent_{dl_traffic_col}_mean"] == 0) &
+            (degraded_with_traffic[f"recent_{ul_traffic_col}_mean"] == 0)
+        )
+
+        if dead_cells_mask.any():
+            log_msg("Cell outage detected " + str(int(dead_cells_mask.sum())) + " cells with zero traffic")
+            # Store dead cells separately for outage RCA (before removing from degraded_cells)
+            dead_cells_subset = degraded_with_traffic.loc[dead_cells_mask].copy()
+            dead_cells_rca = dead_cells_subset[CELL_ID_COLS].copy().reset_index(drop=True)
+            for idx in range(len(dead_cells_rca)):
+                row_data = dead_cells_subset.iloc[idx]
+                outage_rca = generate_outage_rca(row_data.to_dict(), dl_traffic_col, ul_traffic_col)
+                for col, val in outage_rca.items():
+                    dead_cells_rca.loc[idx, col] = val
+            # Remove dead cells by cell identity (not by index) to avoid alignment issues
+            dead_keys = dead_cells_subset[CELL_ID_COLS].drop_duplicates()
+            degraded_cells = (
+                degraded_cells
+                .merge(dead_keys.assign(_drop=True), on=CELL_ID_COLS, how="left")
+            )
+            degraded_cells = degraded_cells[degraded_cells["_drop"].isna()].drop(columns="_drop").copy()
+
     if available_related_features:
         reason_cols = CELL_ID_COLS + [DATE_COL] + available_related_features
         df_reason = df[reason_cols].copy()
@@ -719,6 +769,43 @@ def analyze_selected_kpi(
             bi = bi.rename(columns={"baseline_avg": f"baseline_{c}_mean", "baseline_max": f"baseline_{c}_max"})
             baseline_reason_agg = baseline_reason_agg.merge(
                 bi[CELL_ID_COLS + [f"baseline_{c}_mean", f"baseline_{c}_max"]], on=CELL_ID_COLS, how="left")
+
+        # Apply baseline resolution to related counters using same policy as target KPI:
+        # NaN baselines -> use min_baseline_value as fallback
+        # Zero baseline with recent>0 -> keep zero (represents recovery)
+        # Zero baseline with recent=0 -> apply fallback
+        merged_reason = baseline_reason_agg.merge(
+            recent_reason_agg, on=CELL_ID_COLS, how="left"
+        )
+        for c in available_related_features:
+            baseline_col = f"baseline_{c}_mean"
+            recent_col = f"recent_{c}_mean"
+            is_feature_ratio = _is_ratio_feature(c)
+            
+            # Determine which cells need resolution (NaN baseline or both zero)
+            nan_mask = merged_reason[baseline_col].isna()
+            both_zero_mask = (merged_reason[baseline_col] == 0) & (merged_reason[recent_col] == 0)
+            needs_resolution = nan_mask | both_zero_mask
+            
+            # For cells needing resolution, apply the resolution policy
+            for idx in merged_reason[needs_resolution].index:
+                original_baseline = merged_reason.at[idx, baseline_col]
+                recent_val = merged_reason.at[idx, recent_col]
+                
+                resolved, _ = resolve_baseline(
+                    baseline=original_baseline,
+                    recent=recent_val,
+                    is_ratio=is_feature_ratio,
+                    use_historical_fallback=True,
+                    historical_baseline=np.nan,
+                    min_baseline_value=min_baseline_value,
+                )
+                merged_reason.at[idx, baseline_col] = resolved
+        
+        # Select only the baseline columns (mean and max) for the result
+        baseline_cols_mean = [f"baseline_{c}_mean" for c in available_related_features]
+        baseline_cols_max = [f"baseline_{c}_max" for c in available_related_features]
+        baseline_reason_agg = merged_reason[CELL_ID_COLS + baseline_cols_mean + baseline_cols_max].copy()
 
         for c in available_related_features:
             recent_reason_agg[f"recent_{c}"] = recent_reason_agg[f"recent_{c}_mean"]
@@ -757,8 +844,6 @@ def analyze_selected_kpi(
         degraded_with_causes["supporting_evidence"] = "No related counters from the config were found in the uploaded sheet."
         degraded_with_causes["next_investigation_steps"] = "Review raw counters, alarms, recent parameter changes, neighbor cells, and OSS logs manually."
 
-    metadata["quarantine_df"] = pd.concat(quarantine_frames, ignore_index=True) if quarantine_frames else _empty_quarantine()
-
     final_cols = CELL_ID_COLS + [
         "selected_kpi_name", "target_kpi_column", "kpi_category",
         "selected_threshold_%", "recent_period", "baseline_period",
@@ -771,5 +856,13 @@ def analyze_selected_kpi(
         "all_detected_causes", "main_root_cause_category",
         "main_cause_counter_or_kpi", "main_degradation_reason", "main_recommended_action", "all_recommended_actions"
     ]
+
+    if dead_cells_rca is not None:
+        common_cols = [c for c in final_cols if c in dead_cells_rca.columns]
+        dead_cells_subset = dead_cells_rca[common_cols].copy()
+        degraded_with_causes = pd.concat([degraded_with_causes, dead_cells_subset], ignore_index=True)
+
+    metadata["quarantine_df"] = pd.concat(quarantine_frames, ignore_index=True) if quarantine_frames else _empty_quarantine()
+
     available_final_cols = [c for c in final_cols if c in degraded_with_causes.columns]
     return degraded_with_causes[available_final_cols].copy(), metadata

@@ -299,6 +299,67 @@ def compute_baseline_fallback_from_history(
     return result_df
 
 
+def resolve_baseline(baseline, recent, is_ratio, use_historical_fallback, historical_baseline, min_baseline_value):
+    """
+    Resolves the baseline value based on the new baseline resolution policy.
+
+    Three states:
+    1. Missing baseline (NaN): Use historical fallback or min_baseline_value
+    2. Measured zero baseline (0) with recent>0: Keep zero, no fallback (represents recovery)
+    3. Valid positive baseline (>0): Use directly
+
+    For ratio KPIs with baseline=0 and recent=0, apply historical fallback only if use_historical_fallback=True.
+    For non-ratio KPIs with baseline=0 and recent=0, always apply fallback.
+
+    Args:
+        baseline (float): The original baseline value (can be NaN, 0, or >0).
+        recent (float): The recent KPI value.
+        is_ratio (bool): True if the KPI is a ratio metric.
+        use_historical_fallback (bool): Configuration flag to control historical fallback.
+        historical_baseline (float): Pre-fetched historical baseline (can be NaN).
+        min_baseline_value (float): The configured minimum baseline value as a last resort.
+
+    Returns:
+        tuple: (resolved_baseline, source_of_fallback)
+               - resolved_baseline (float): The final baseline to be used.
+               - source_of_fallback (str or None): Describes the fallback used, e.g., 'history', 'min_baseline_value', or 'kept_zero'.
+    """
+    # Source is None if we use the original baseline
+    source = None
+
+    # Baseline > 0: Valid baseline, use directly
+    if baseline > 0:
+        return baseline, None
+
+    # Baseline is NaN: Missing baseline -> use fallback
+    if pd.isna(baseline):
+        if not pd.isna(historical_baseline):
+            source = 'history'
+            return historical_baseline, source
+        else:
+            source = 'min_baseline_value'
+            return min_baseline_value, source
+
+    # Baseline is 0: Measured zero baseline
+    if baseline == 0:
+        # recent > 0: Keep zero (represents recovered cell or new traffic)
+        if recent > 0:
+            return 0.0, 'kept_zero'
+        # recent <= 0 or NaN: Both are zero/negative or missing - apply fallback
+        # For ratio KPIs with use_historical_fallback=False (like E-RAB Drop Rate),
+        # keep zero as valid (perfect health state)
+        if is_ratio and not use_historical_fallback:
+            return 0.0, 'kept_zero'
+        if not pd.isna(historical_baseline):
+            source = 'history'
+            return historical_baseline, source
+        else:
+            source = 'min_baseline_value'
+            return min_baseline_value, source
+
+    # Default case if something unexpected happens
+    return baseline, None
+
 def apply_baseline_fallback(
     comparison_df,
     df_full,
@@ -308,156 +369,120 @@ def apply_baseline_fallback(
     baseline_start,
     baseline_end,
     min_baseline_value,
+    use_historical_fallback,
+    is_ratio,
     lookback_weeks=5,
     min_samples=1,
     log_callback=None,
-    is_ratio=False,
 ):
     """
-    Apply baseline fallback for cells with NaN baseline average.
+    Applies the new baseline resolution policy to a dataframe of cells.
 
-    For ratio KPIs (RRC SR %, Drop Rate %, HO SR %, etc.):
-        - NaN baseline (no data): try historical fallback, then min_baseline_value
-        - Zero baseline (actual 0): use 0.001 as fallback (avoids division by zero)
+    This function orchestrates the process:
+    1. Identifies cells that need baseline resolution (NaN or both zero)
+    2. Fetches historical data for those cells
+    3. Calls the `resolve_baseline` function for each cell to get the final baseline
+    4. Updates the dataframe with the resolved baseline and transparency flags
 
-    For non-ratio KPIs (Traffic, Throughput, etc.):
-        - NaN baseline (missing data): try historical fallback
-        - Zero baseline (actual 0): try historical fallback first, then 0.001
-
-    This function:
-    1. Identifies cells with NaN baseline_avg_kpi
-    2. For NaN: Attempts to get fallback from historical data (same weekday, N weeks ago)
-    3. For zero (non-ratio): Uses min_baseline_value as last resort
-    4. Flags cells where fallback was used for transparency
-
-    Args:
-        comparison_df: DataFrame with baseline_avg_kpi column
-        df_full: Full DataFrame with all historical data
-        target_kpi: Column name of the KPI
-        cell_cols: List of columns identifying a cell
-        date_col: Name of date column
-        baseline_start: Start date of baseline period
-        baseline_end: End date of baseline period
-        min_baseline_value: Fallback value if no history available
-        lookback_weeks: How many weeks back to look (default 5)
-        min_samples: Minimum samples needed for valid median (default 1)
-        log_callback: Optional logging function
-        is_ratio: True for ratio KPIs (percentage values), False for volume/count KPIs
-
-    Returns:
-        DataFrame with updated baseline_avg_kpi and new flag columns:
-        - baseline_fallback_used: True if fallback was applied
-        - baseline_fallback_source: 'history', 'zero_fixed', or 'min_baseline_value'
-        - baseline_fallback_value: The fallback value used
+    Note: According to the specification:
+    - Zero baseline with recent>0: Keep zero (represents recovered cell)
+    - Zero baseline with recent=0: Apply fallback (unless use_historical_fallback=False)
+    - NaN baseline: Apply fallback
     """
-    comparison_df = comparison_df.copy()
+    if comparison_df.empty:
+        return comparison_df
 
-    # Initialize flag columns
+    comparison_df = comparison_df.copy()
     comparison_df['baseline_fallback_used'] = False
     comparison_df['baseline_fallback_source'] = None
     comparison_df['baseline_fallback_value'] = np.nan
 
-    # Identify cells needing fallback (baseline is zero or NaN)
-    is_zero = comparison_df['baseline_avg_kpi'] == 0
-    is_nan = comparison_df['baseline_avg_kpi'].isna()
-    needs_fallback = is_zero | is_nan
+    # Identify cells that need resolution:
+    # 1. NaN baseline - always needs fallback
+    # 2. Zero baseline with recent=0 - needs fallback (for ratio KPIs, respect use_historical_fallback flag)
+    needs_resolution_mask = comparison_df['baseline_avg_kpi'].isna() | (
+        (comparison_df['baseline_avg_kpi'] == 0) & 
+        (comparison_df['recent_avg_kpi'] == 0)
+    )
 
-    if not needs_fallback.any():
+    if not needs_resolution_mask.any():
         if log_callback:
-            log_callback("No cells need baseline fallback")
+            log_callback("No cells require baseline resolution.")
         return comparison_df
 
-    n_needs_fallback = needs_fallback.sum()
     if log_callback:
-        log_callback(f"Attempting baseline fallback for {n_needs_fallback} cells with NaN baseline")
+        log_callback(f"Performing baseline resolution for {needs_resolution_mask.sum()} cells.")
 
-    # For NaN baseline, try historical fallback
-    nan_mask = is_nan & needs_fallback
-    if nan_mask.any():
-        fallback_df = compute_baseline_fallback_from_history(
-            df_full, target_kpi, cell_cols, date_col,
-            baseline_start, baseline_end, lookback_weeks, min_samples
+    # Fetch historical data for all cells needing resolution
+    cells_needing_history = comparison_df[needs_resolution_mask]
+    historical_fallback_df = pd.DataFrame()
+    if not cells_needing_history.empty:
+        historical_fallback_df = compute_baseline_fallback_from_history(
+            df_full[df_full[cell_cols[0]].isin(cells_needing_history[cell_cols[0]].unique())],
+            target_kpi,
+            cell_cols,
+            date_col,
+            baseline_start,
+            baseline_end,
+            lookback_weeks,
+            min_samples
         )
 
-        if not fallback_df.empty:
-            comparison_df = comparison_df.merge(
-                fallback_df[list(cell_cols) + ['baseline_fallback', 'fallback_weeks_back', 'fallback_samples']],
-                on=list(cell_cols), how='left'
-            )
+    # Merge historical data back into the main dataframe
+    if not historical_fallback_df.empty:
+        comparison_df = comparison_df.merge(
+            historical_fallback_df[list(cell_cols) + ['baseline_fallback']],
+            on=list(cell_cols), how='left'
+        )
+    else:
+        comparison_df['baseline_fallback'] = np.nan
 
-            has_history = nan_mask & comparison_df['baseline_fallback'].notna()
-            if has_history.any():
-                comparison_df.loc[has_history, 'baseline_avg_kpi'] = comparison_df.loc[has_history, 'baseline_fallback']
-                comparison_df.loc[has_history, 'baseline_fallback_used'] = True
-                comparison_df.loc[has_history, 'baseline_fallback_source'] = 'history'
-                comparison_df.loc[has_history, 'baseline_fallback_value'] = comparison_df.loc[has_history, 'baseline_fallback']
-                if log_callback:
-                    log_callback(f"  - {has_history.sum()} cells got fallback from historical data")
+# Iterate and apply the resolution logic row-by-row
+    resolved_baselines = []
+    fallback_sources = []
 
-            still_nan = comparison_df['baseline_avg_kpi'].isna()
-            if still_nan.any():
-                comparison_df.loc[still_nan, 'baseline_avg_kpi'] = min_baseline_value
-                comparison_df.loc[still_nan, 'baseline_fallback_used'] = True
-                comparison_df.loc[still_nan, 'baseline_fallback_source'] = 'min_baseline_value'
-                comparison_df.loc[still_nan, 'baseline_fallback_value'] = min_baseline_value
-                if log_callback:
-                    log_callback(f"  - {still_nan.sum()} cells using min_baseline_value ({min_baseline_value}) as fallback")
+    for idx, row in comparison_df.iterrows():
+        original_baseline = row['baseline_avg_kpi']
+        
+        # If baseline is valid and > 0, no resolution needed
+        if pd.notna(original_baseline) and original_baseline > 0:
+            resolved_baselines.append((idx, original_baseline, None))
+            continue
 
-            cols_to_drop = ['baseline_fallback', 'fallback_weeks_back', 'fallback_samples']
-            comparison_df = comparison_df.drop(columns=[c for c in cols_to_drop if c in comparison_df.columns], errors='ignore')
-        else:
-            still_nan = comparison_df['baseline_avg_kpi'].isna()
-            if still_nan.any():
-                comparison_df.loc[still_nan, 'baseline_avg_kpi'] = min_baseline_value
-                comparison_df.loc[still_nan, 'baseline_fallback_used'] = True
-                comparison_df.loc[still_nan, 'baseline_fallback_source'] = 'min_baseline_value'
-                comparison_df.loc[still_nan, 'baseline_fallback_value'] = min_baseline_value
-                if log_callback:
-                    log_callback(f"  - {still_nan.sum()} cells using min_baseline_value ({min_baseline_value}) as fallback")
+        # Get required values for resolution
+        recent_kpi = row['recent_avg_kpi']
+        historical_kpi = row['baseline_fallback']
+        
+        resolved, source = resolve_baseline(
+            baseline=original_baseline,
+            recent=recent_kpi,
+            is_ratio=is_ratio,
+            use_historical_fallback=use_historical_fallback,
+            historical_baseline=historical_kpi,
+            min_baseline_value=min_baseline_value
+        )
+        
+        resolved_baselines.append((idx, resolved, source))
+        
+        if source and source != 'kept_zero':
+            comparison_df.at[idx, 'baseline_fallback_used'] = True
+            comparison_df.at[idx, 'baseline_fallback_source'] = source
+            comparison_df.at[idx, 'baseline_fallback_value'] = resolved
+    
+    # Apply resolved baselines with proper index alignment
+    for idx, val, src in resolved_baselines:
+        comparison_df.at[idx, 'baseline_avg_kpi'] = val
+    
+    if log_callback:
+        used_fallback = comparison_df['baseline_fallback_used'].sum()
+        if used_fallback > 0:
+            source_counts = comparison_df['baseline_fallback_source'].value_counts().to_dict()
+            log_callback(f"Baseline resolution complete: {used_fallback} cells updated.")
+            for source, count in source_counts.items():
+                log_callback(f"  - Source '{source}': {count} cells")
 
-    # For non-ratio KPIs with zero baseline (not NaN), try historical fallback first
-    if not is_ratio:
-        zero_mask = is_zero & ~comparison_df['baseline_fallback_used']
-        if zero_mask.any():
-            fallback_df = compute_baseline_fallback_from_history(
-                df_full, target_kpi, cell_cols, date_col,
-                baseline_start, baseline_end, lookback_weeks, min_samples
-            )
-
-            if not fallback_df.empty:
-                comparison_df = comparison_df.merge(
-                    fallback_df[list(cell_cols) + ['baseline_fallback', 'fallback_weeks_back', 'fallback_samples']],
-                    on=list(cell_cols), how='left'
-                )
-
-                has_history = is_zero & comparison_df['baseline_fallback'].notna()
-                if has_history.any():
-                    comparison_df.loc[has_history, 'baseline_avg_kpi'] = comparison_df.loc[has_history, 'baseline_fallback']
-                    comparison_df.loc[has_history, 'baseline_fallback_used'] = True
-                    comparison_df.loc[has_history, 'baseline_fallback_source'] = 'history'
-                    comparison_df.loc[has_history, 'baseline_fallback_value'] = comparison_df.loc[has_history, 'baseline_fallback']
-                    if log_callback:
-                        log_callback(f"  - {has_history.sum()} zero-baseline cells got fallback from historical")
-
-            # Any cell whose baseline is STILL zero here has no observed baseline
-            # and no recoverable history. For a relative-% (non-ratio) KPI the
-            # degradation is recent/baseline, which is undefined against a zero
-            # reference. The previous 0.001 placeholder manufactured false
-            # signals: a dead cell (recent 0) scored +100% degradation, and a
-            # cell coming online (recent > 0) produced a large negative artifact
-            # that polluted the aggregate statistics. Mark these cells with a NaN
-            # baseline ("no usable reference") so the analysis layer excludes them
-            # explicitly rather than fabricating a baseline. (BUG-04)
-            still_zero = comparison_df['baseline_avg_kpi'].fillna(0) == 0
-            if still_zero.any():
-                comparison_df.loc[still_zero, 'baseline_avg_kpi'] = np.nan
-                comparison_df.loc[still_zero, 'baseline_fallback_used'] = True
-                comparison_df.loc[still_zero, 'baseline_fallback_source'] = 'no_usable_baseline'
-                comparison_df.loc[still_zero, 'baseline_fallback_value'] = np.nan
-                if log_callback:
-                    log_callback(f"  - {still_zero.sum()} zero-baseline cells: no history, no usable reference -> excluded")
-
-            cols_to_drop = ['baseline_fallback', 'fallback_weeks_back', 'fallback_samples']
-            comparison_df = comparison_df.drop(columns=[c for c in cols_to_drop if c in comparison_df.columns], errors='ignore')
+# Clean up temporary column
+    if 'baseline_fallback' in comparison_df.columns:
+        comparison_df = comparison_df.drop(columns=['baseline_fallback'])
 
     return comparison_df

@@ -222,7 +222,8 @@ def test_bug08_vectorized_matches_scalar_reference():
 # --------------------------------------------------------------------------- #
 def test_bug09_requirements_complete_and_no_xlrd():
     path = os.path.join(os.path.dirname(__file__), "requirements.txt")
-    text = open(path).read().lower()
+    with open(path) as f:
+        text = f.read().lower()
     for pkg in ["streamlit", "plotly", "scikit-learn", "xgboost", "statsmodels"]:
         assert pkg in text, f"requirements.txt is missing {pkg}"
     # xlrd must not be a dependency (it can't open the .xlsx data).
@@ -490,7 +491,6 @@ def test_bug09_ratio_kpi_zero_baseline_applies_fallback():
         f"Got {deg}%. "
         f"baseline_avg_kpi = {baseline_recovered}"
     )
-
 
 
 

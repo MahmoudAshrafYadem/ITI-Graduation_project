@@ -105,7 +105,7 @@ IMPUTATION_CONFIG = {
 
 REQUIRED_KPI_FIELDS = [
     "target_kpi", "bad_direction", "default_threshold",
-    "category", "output_prefix", "min_baseline_value", "related_rules"
+    "category", "output_prefix", "min_baseline_value", "related_rules",
 ]
 
 REQUIRED_RULE_FIELDS = [
@@ -138,6 +138,16 @@ def validate_kpi_configs():
         # Validate bad_direction
         if config.get("bad_direction") not in ("low", "high"):
             errors.append(f"KPI '{kpi_name}' bad_direction must be 'low' or 'high'")
+
+        # Validate is_ratio (optional but must be boolean if present)
+        is_ratio = config.get("is_ratio")
+        if is_ratio is not None and not isinstance(is_ratio, bool):
+            errors.append(f"KPI '{kpi_name}' is_ratio must be boolean")
+
+        # Validate use_historical_fallback (optional but must be boolean if present)
+        use_fb = config.get("use_historical_fallback")
+        if use_fb is not None and not isinstance(use_fb, bool):
+            errors.append(f"KPI '{kpi_name}' use_historical_fallback must be boolean")
 
         # Validate related_rules
         for idx, rule in enumerate(config.get("related_rules", [])):
@@ -186,6 +196,8 @@ KPI_CONFIGS = {
         "category": "Traffic",
         "output_prefix": "dl_traffic",
         "min_baseline_value": 1.0,
+        "is_ratio": False,
+        "use_historical_fallback": True,
         "related_rules": [
             # === Original Throughput & Capacity Rules ===
             {"feature": "(HU) Cell DL Average Throughput (Mbps)", "bad_direction": "low", "threshold": 20, "severity": 3, "category": "DL Throughput Degradation", "reason": "Cell DL throughput decreased.", "recommended_action": "Check DL scheduler, bandwidth, CA activation, load balancing, and congestion."},
@@ -228,6 +240,8 @@ KPI_CONFIGS = {
         "category": "Traffic",
         "output_prefix": "ul_traffic",
         "min_baseline_value": 0.1,
+        "is_ratio": False,
+        "use_historical_fallback": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "(HU) Cell UL Average Throughput (Mbps)", "bad_direction": "low", "threshold": 20, "severity": 3, "category": "UL Throughput Degradation", "reason": "Cell UL throughput decreased.", "recommended_action": "Check UL scheduler, UL PRB utilization, uplink interference, and power control."},
@@ -261,6 +275,8 @@ KPI_CONFIGS = {
         "category": "Integrity",
         "output_prefix": "dl_throughput",
         "min_baseline_value": 5.0,
+        "is_ratio": False,
+        "use_historical_fallback": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "(HU) DL PRB Utilization(%)", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "DL Congestion", "reason": "DL PRB utilization increased while DL throughput decreased.", "recommended_action": "Check congestion, load balancing, CA, bandwidth, scheduler, and capacity expansion."},
@@ -299,6 +315,8 @@ KPI_CONFIGS = {
         "category": "Integrity",
         "output_prefix": "ul_throughput",
         "min_baseline_value": 2.0,
+        "is_ratio": False,
+        "use_historical_fallback": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "(HU)UL PRB Utilization(%)", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "UL Congestion", "reason": "UL PRB utilization increased while UL throughput degraded.", "recommended_action": "Check UL load, UL scheduler, and uplink capacity."},
@@ -330,6 +348,7 @@ KPI_CONFIGS = {
         "output_prefix": "rrc_setup_sr",
         "min_baseline_value": 90.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "L.RRC.ConnReq.Att", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High RRC Attempts", "reason": "RRC attempts increased.", "recommended_action": "Check RACH load, access parameters, admission control, and overload."},
             {"feature": "RRC Setup Failure Time", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "RRC Failure Increase", "reason": "RRC setup failures increased.", "recommended_action": "Check RACH failures, no reply, rejection, admission control, and radio quality."},
@@ -352,6 +371,7 @@ KPI_CONFIGS = {
         "output_prefix": "erab_setup_sr",
         "min_baseline_value": 95.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "L.E-RAB.AttEst", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High ERAB Attempts", "reason": "E-RAB setup attempts increased.", "recommended_action": "Check access load, service attempts, and admission control."},
             {"feature": "ERAB Setup Failure Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "ERAB Failure Increase", "reason": "E-RAB setup failures increased.", "recommended_action": "Check ERAB failure reason counters, MME, TNL, RNL, and radio resources."},
@@ -370,6 +390,7 @@ KPI_CONFIGS = {
         "output_prefix": "drop_rate",
         "min_baseline_value": 0.1,
         "is_ratio": True,
+        "use_historical_fallback": False,
         "related_rules": [
             # === Original Rules ===
             {"feature": "L.E-RAB.AbnormRel", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "Abnormal Release Increase", "reason": "E-RAB abnormal releases increased.", "recommended_action": "Check drop reason counters, radio quality, HO failures, and TNL/MME causes."},
@@ -416,6 +437,7 @@ KPI_CONFIGS = {
         "output_prefix": "ho_success_rate",
         "min_baseline_value": 90.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             # === Original Rules ===
             {"feature": "Intra_Freq HO Prepare Failed Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "Intra-Frequency HO Preparation Failure", "reason": "Intra-frequency HO preparation failures increased.", "recommended_action": "Check neighbor relations, target cell availability, admission control, and HO prep failure reasons."},
@@ -459,6 +481,7 @@ KPI_CONFIGS = {
         "output_prefix": "availability",
         "min_baseline_value": 99.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "(HU) Cell Unavail Time (s)", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "Cell Unavailable Time Increase", "reason": "Cell unavailable time increased.", "recommended_action": "Check outage, alarms, power, transmission, and site status."},
             {"feature": "L.Cell.Unavail.Dur.Sys(s)", "bad_direction": "high", "threshold": 20, "severity": 5, "category": "System Unavailability", "reason": "System unavailability duration increased.", "recommended_action": "Check system faults, board alarms, transmission, and eNodeB health."},
@@ -475,6 +498,7 @@ KPI_CONFIGS = {
         "output_prefix": "rach_success_rate",
         "min_baseline_value": 95.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "RACH Setup Failed Number", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "RACH Setup Failures", "reason": "RACH setup failures increased.", "recommended_action": "Check PRACH parameters, root sequence planning, coverage, interference, and access load."},
             {"feature": "RACH Contention-Based Failures", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "Contention-Based RACH Failure", "reason": "Contention-based RACH failures increased.", "recommended_action": "Check preamble congestion, PRACH configuration, root sequence, and access load."},
@@ -492,6 +516,7 @@ KPI_CONFIGS = {
         "output_prefix": "csfb_kpi",
         "min_baseline_value": 90.0,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "CSFB Failure Times", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "CSFB Failure Increase", "reason": "CSFB failure times increased.", "recommended_action": "Check CSFB failure reasons, MME/S1 signaling, RRC redirection, and target 2G/3G availability."},
             {"feature": "L.CSFB.PrepAtt", "bad_direction": "high", "threshold": 20, "severity": 2, "category": "High CSFB Preparation Attempts", "reason": "CSFB preparation attempts increased, which may increase CSFB load.", "recommended_action": "Check CSFB traffic demand, MME load, S1 signaling, and whether the increase is normal voice demand."},
@@ -520,6 +545,7 @@ KPI_CONFIGS = {
         "output_prefix": "volte_kpis",
         "min_baseline_value": 3.5,
         "is_ratio": True,
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "VoLTE Traffic (Erl)(Erl)", "bad_direction": "low", "threshold": 20, "severity": 3, "category": "VoLTE Traffic Drop", "reason": "VoLTE traffic decreased.", "recommended_action": "Check VoLTE user demand, IMS service, VoLTE coverage, and QCI-1 traffic."},
             {"feature": "L.Traffic.User.VoIP.Avg", "bad_direction": "low", "threshold": 20, "severity": 2, "category": "VoIP User Drop", "reason": "Average VoIP users decreased.", "recommended_action": "Check VoLTE traffic demand, service availability, and IMS registration behavior."},
@@ -559,6 +585,7 @@ KPI_CONFIGS = {
         "output_prefix": "rrc_reestablishment",
         "min_baseline_value": 90.0,
         "is_ratio": True,  # Fixed: 80% baseline is already degraded; healthy is >95%
+        "use_historical_fallback": True,
         "related_rules": [
             {"feature": "RRC Reestablish Failures(times)", "bad_direction": "high", "threshold": 20, "severity": 4, "category": "Re-establishment Failure", "reason": "RRC re-establishment failures increased.", "recommended_action": "Check RLF causes, coverage, and re-establishment parameters."},
             {"feature": "L.RRC.ReEstFail.NoReply", "bad_direction": "high", "threshold": 20, "severity": 3, "category": "Re-establishment No Reply", "reason": "No reply during re-establishment.", "recommended_action": "Check target cell coverage and signaling."},

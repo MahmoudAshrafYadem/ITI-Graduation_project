@@ -155,20 +155,24 @@ def calculate_degradation(recent_value, baseline_value, bad_direction, is_ratio=
     """
     if pd.isna(recent_value) or pd.isna(baseline_value):
         return np.nan
+
+    if is_ratio:
+        return (baseline_value - recent_value) if bad_direction == "low" else (recent_value - baseline_value)
+
+    # Non-ratio KPIs
+    if baseline_value == 0:
+        # As per new policy, baseline 0 to recent > 0 is "Normal", not degraded.
+        # Degradation is 0 because it's not worse. If recent is also 0, it's 0.
+        return 0.0 if recent_value >= 0 else 0.0
+
     if bad_direction == "low":
-        if is_ratio:
-            return baseline_value - recent_value
-        if baseline_value == 0:
-            return np.nan
         deg = ((baseline_value - recent_value) / baseline_value) * 100
         return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
+    
     if bad_direction == "high":
-        if is_ratio:
-            return recent_value - baseline_value
-        if baseline_value == 0:
-            return np.nan
         deg = ((recent_value - baseline_value) / baseline_value) * 100
         return float(np.clip(deg, -DEGRADATION_PCT_CAP, DEGRADATION_PCT_CAP))
+        
     return np.nan
 
 

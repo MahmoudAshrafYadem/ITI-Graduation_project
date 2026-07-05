@@ -14,6 +14,71 @@ from clean_excel_and_helpers import (
     calculate_degradation,
 )
 
+def detect_cell_outage(row, dl_traffic_col, ul_traffic_col):
+    """
+    Classifies cell health based on traffic counters for a single cell (row).
+    """
+    recent_dl_col = f"recent_{dl_traffic_col}"
+    recent_ul_col = f"recent_{ul_traffic_col}"
+
+    if recent_dl_col not in row.index or recent_ul_col not in row.index:
+        return {"cell_health": "UNKNOWN", "confidence": "LOW", "reason": "Traffic counters not available."}
+
+    dl_traffic = row[recent_dl_col]
+    ul_traffic = row[recent_ul_col]
+
+    if pd.notna(dl_traffic) and pd.notna(ul_traffic) and dl_traffic == 0 and ul_traffic == 0:
+        # Also check availability if present
+        availability = row.get('recent_avg_kpi', -1)
+        if 'availability' in str(row.get('selected_kpi_name', '')).lower() and availability == 0:
+            confidence = "VERY HIGH"
+        else:
+            confidence = "HIGH"
+        
+        return {
+            "cell_health": "DEAD",
+            "confidence": confidence,
+            "reason": "Cell has zero DL and UL traffic during the recent period."
+        }
+    
+    return {"cell_health": "ALIVE", "confidence": "HIGH", "reason": "Cell is carrying traffic."}
+
+
+def generate_outage_rca(dead_cell_row, dl_traffic_col, ul_traffic_col):
+    """
+    Generates the specific RCA output for a cell classified as DEAD.
+    """
+    evidence = [
+        "DL Traffic = 0",
+        "UL Traffic = 0",
+    ]
+    if 'recent_avg_kpi' in dead_cell_row and 'availability' in str(dead_cell_row.get('selected_kpi_name', '')).lower():
+        evidence.append(f"Availability = {dead_cell_row['recent_avg_kpi']:.2f}%")
+
+    evidence.append("No service observed during recent period.")
+    
+    baseline_traffic_col = f"baseline_{dl_traffic_col}"
+    baseline_traffic = dead_cell_row.get(baseline_traffic_col, np.nan)
+
+    return pd.Series({
+        "main_cause_counter_or_kpi": "Cell Outage",
+        "main_cause_recent_value": 0,
+        "main_cause_baseline_value": baseline_traffic,
+        "main_cause_change_%": 100.0,
+        "main_root_cause_category": "Cell Outage",
+        "main_degradation_reason": "Cell has zero DL and UL traffic during the recent period. Degradation is consistent with a complete service outage. Related counters remain at zero because the cell is not carrying traffic.",
+        "main_recommended_action": "Check: Site power, Transmission, Transport connectivity, Node alarms, Cell lock state, Backhaul.",
+        "number_of_detected_causes": 1,
+        "multi_cause_flag": "No",
+        "all_detected_causes": "Cell Outage (zero traffic)",
+        "all_cause_categories": "Cell Outage",
+        "all_recommended_actions": "Check: Site power, Transmission, Transport connectivity, Node alarms, Cell lock state, Backhaul.",
+        "rca_pattern": "Outage",
+        "supporting_evidence": " | ".join(evidence),
+        "next_investigation_steps": RCA_INVESTIGATION_STEPS["Outage"],
+    })
+
+
 def _is_ratio_feature(feature_col):
     """Check if a feature column represents a ratio/percentage KPI.
     
@@ -246,13 +311,13 @@ def find_degradation_causes_vectorized(df, rules):
                     change_pct = np.where(
                         baseline_values != 0,
                         ((baseline_values - recent_values) / baseline_values) * 100,
-                        np.nan
+                        0.0
                     )
                 else:  # high
                     change_pct = np.where(
                         baseline_values != 0,
                         ((recent_values - baseline_values) / baseline_values) * 100,
-                        np.nan
+                        0.0
                     )
         
         # Create mask for cells passing threshold
