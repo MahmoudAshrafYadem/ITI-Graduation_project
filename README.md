@@ -19,7 +19,6 @@
 9. [KPI Configuration Reference](#9-kpi-configuration-reference)
 10. [Root Cause Analysis Engine](#10-root-cause-analysis-engine)
 11. [Visualization & Reporting](#11-visualization--reporting)
-12. [Recent Changes](#12-recent-changes)
 13. [Extending the System](#13-extending-the-system)
 13. [Troubleshooting](#14-troubleshooting)
 15. [License & Attribution](#15-license--attribution)
@@ -916,64 +915,7 @@ RF Optimization Analysis Report
 ---
 
 
-## 12. Recent Changes
-
-### Baseline Resolution Policy (Ratio vs Non-Ratio Handling)
-
-**What changed:** Implemented the baseline resolution redesign to distinguish between missing (NaN), measured zero, and valid positive baselines.
-
-**Where:** 
-- `data_quality.py`: Added `resolve_baseline()` and `apply_baseline_fallback()` centralized functions
-- `main_function_for_selected_kpi.py`: Integrated resolution policy for target KPI and related counters
-
-**Resolution Rules:**
-
-| For ratio KPIs: | Baseline | Recent | Resolution | | For non-ratio KPIs: | Baseline | Recent | Resolution |
-|-----------------|----------|--------|------------| |----------|--------|------------|
-| | NaN | Any | History → Min | | NaN | Any | History → Min |
-| | 0 | >0 | Keep 0 (recovered) | | 0 | >0 | Keep 0 (Normal) |
-| | 0 | 0 | History → Min* | | 0 | 0 | History → Min |
-| | >0 | Any | Use baseline | | >0 | Any | Use baseline |
-
-`* Exception: E-RAB Drop Rate has `use_historical_fallback: False`, so 0→0 stays as Normal (0%).`
-
-**Configuration:** Each KPI has `is_ratio` and `use_historical_fallback` flags in `KPI_Configuration.py`.
-
----
-
-### Cell Health Pre-Classification — Outage Detection
-
-**What changed:** Added pre-classification to detect complete cell outages before RCA processing.
-
-**Where:** `cause_detect_functions.py` and `main_function_for_selected_kpi.py`
-
-**Detection:** Both DL Traffic = 0 AND UL Traffic = 0 in recent period.
-
-**Fixes Applied:**
-- Index alignment error fixed: was using `degraded_cells[~dead_cells_mask]` where mask belonged to `degraded_with_traffic`. Now uses merge-based filtering by cell identity (`CELL_ID_COLS`).
-- Fixed `apply_baseline_fallback()` index alignment (changed list assignment to `.at[idx, ...]`).
-
-**Outage RCA Output:**
-```
-main_cause_counter_or_kpi: "Cell Outage"
-main_root_cause_category: "Cell Outage"
-main_degradation_reason: "Cell has zero DL and UL traffic during the recent period. Degradation is consistent with a complete service outage."
-supporting_evidence: "DL Traffic = 0 | UL Traffic = 0 | No service observed during recent period."
-next_investigation_steps: "Check: Site power, Transmission, Transport connectivity, Node alarms, Cell lock state, Backhaul."
-```
-
-**Example:**
-```
-Availability: 100 → 0
-DL Traffic = 0
-UL Traffic = 0
-```
-**Before:** "No strong related counter degraded."
-**After:** "Cell Outage" with actionable guidance.
-
----
-
-### 13. Extending the System
+## 13. Extending the System
 
 ### 13.1 Adding New Counter Types
 
