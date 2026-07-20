@@ -1,0 +1,12 @@
+{
+  "throughput_dl_mbps": "higher",
+  "throughput_ul_mbps": "higher",
+  "drop_rate_pct": "lower",
+  "rach_success_rate_pct": "higher",
+  "avg_cqi": "higher",
+  "bler_dl_pct": "lower",
+  "latency_ms": "lower",
+  "prb_utilization_pct": "higher",
+  "handover_success_rate_pct": "higher",
+  "sinr_db": "higher"
+}
