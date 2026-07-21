@@ -8583,22 +8583,6 @@
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-5,5,DL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-6,6,DL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,DL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,DL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
@@ -8653,22 +8637,6 @@
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-5,5,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-6,6,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
 ,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,UL Traffic,,,incomplete day count (recent or baseline),3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN10496,LCAIN10496-6,6,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-5,5,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-6,6,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10497,LCAIN10497-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-5,5,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-6,6,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10585,LCAIN10585-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-5,5,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-6,6,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN10919,LCAIN10919-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-5,5,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-6,6,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN11677,LCAIN11677-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN12865,LCAIN12865-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
-,Missing or insufficient data,LCAIN15434,LCAIN15434-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,3.0,3.0,4.0,4.0
-,Missing or insufficient data,LCAIN15442,LCAIN15442-7,7,UL Traffic,,,excluded: no recent observation or no usable baseline reference,4.0,4.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-1,1,DL Throughput,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-2,2,DL Throughput,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
 ,Missing or insufficient data,LCAIN10493,LCAIN10493-3,3,DL Throughput,,,incomplete day count (recent or baseline),1.0,1.0,4.0,4.0
