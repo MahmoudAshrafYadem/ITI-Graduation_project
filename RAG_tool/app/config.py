@@ -16,9 +16,9 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "telecom_3gpp")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 
-# Gemini
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+# Ollama (local LLM server)
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
 
 # Retrieval
 TOP_K = int(os.getenv("TOP_K", "5"))

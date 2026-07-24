@@ -2,7 +2,7 @@
 from typing import Optional
 from .embeddings import Embedder
 from .retriever import VectorStore
-from .llm import GeminiLLM
+from .llm import OllamaLLM
 from .reranker import Reranker
 from .config import TOP_K
 
@@ -10,7 +10,7 @@ class TelecomRAG:
     def __init__(self):
         self.embedder = Embedder()
         self.store = VectorStore()
-        self.llm = GeminiLLM()
+        self.llm = OllamaLLM()
         self.reranker = Reranker()
 
     def ask(self, question: str, top_k: int = TOP_K, ts_filter: Optional[str] = None, release_filter: Optional[str] = None) -> dict:

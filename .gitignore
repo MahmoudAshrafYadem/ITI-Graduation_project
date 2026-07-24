@@ -100,12 +100,12 @@ Thumbs.db
 
 # Project Specific Data
 # Keep the data/ folder but ignore the heavy 3GPP PDFs
-data/*.pdf
-!data/.gitkeep
+RAG_tool/data/*.pdf
+!RAG_tool/data/.gitkeep
 
 # Local Qdrant Vector Database
-vector_db/
+RAG_tool/vector_db/
 
 # Model Cache (if downloaded locally)
-models/
-.env
+RAG_tool/models/
+RAG_tool/.env

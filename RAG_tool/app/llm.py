@@ -1,8 +1,7 @@
-"""Gemini LLM client"""
+"""Ollama LLM client"""
 from typing import List
-from google import genai
-from google.genai import types
-from .config import GEMINI_API_KEY, GEMINI_MODEL
+from ollama import Client
+from .config import OLLAMA_HOST, OLLAMA_MODEL
 
 SYSTEM_PROMPT = """You are a Senior LTE/5G NR RF Optimization Engineer with deep expertise in 3GPP specifications.
 
@@ -26,12 +25,41 @@ Each chunk is provided as:
 <chunk text>
 """
 
-class GeminiLLM:
-    def __init__(self, api_key: str = GEMINI_API_KEY, model: str = GEMINI_MODEL):
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY is not set. Put it in .env")
-        self.client = genai.Client(api_key=api_key)
+
+class OllamaLLM:
+    def __init__(
+        self,
+        host: str = OLLAMA_HOST,
+        model: str = OLLAMA_MODEL,
+    ):
+        if not host:
+            raise ValueError("OLLAMA_HOST is not set. Put it in .env")
+        if not model:
+            raise ValueError("OLLAMA_MODEL is not set. Put it in .env")
+        self.client = Client(host=host)
         self.model = model
+
+        try:
+            models = self.client.list()
+        except Exception as e:
+            raise RuntimeError(
+                "Cannot connect to Ollama.\n\n"
+                f"Host:\n{host}\n\n"
+                "Please verify:\n"
+                "• Ollama is running\n"
+                "• The server is reachable\n\n"
+                f"Original error:\n{e}"
+            ) from e
+
+        model_names = [m.model for m in models.models]
+        if self.model not in model_names:
+            raise ValueError(
+                f'Model "{self.model}" is not installed.\n\n'
+                f"Installed models:\n\n"
+                + "\n".join(f"• {name}" for name in model_names)
+                + "\n\nRun:\n\n"
+                f"ollama pull {self.model}"
+            )
 
     def generate(self, user_question: str, context_chunks: List[dict]) -> str:
         context_text = self._format_context(context_chunks)
@@ -45,14 +73,39 @@ Context from 3GPP specifications:
 
 Now answer the user's question following ALL the rules in your system instructions.
 """
-        response = self.client.models.generate_content(
-            model=self.model, contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT, temperature=0.1,
-                top_p=0.9, max_output_tokens=2048,
-            ),
-        )
-        return response.text
+        with open("last_prompt.txt", "w", encoding="utf-8") as f:
+            f.write("SYSTEM PROMPT\n")
+            f.write("=" * 80 + "\n")
+            f.write(SYSTEM_PROMPT)
+
+            f.write("\n\nUSER PROMPT\n")
+            f.write("=" * 80 + "\n")
+            f.write(prompt)
+
+        try:
+            response = self.client.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                options={
+                    "temperature": 0.1,
+                    "top_p": 0.9,
+                },
+            )
+        except Exception as e:
+            return (
+                "Cannot connect to Ollama.\n\n"
+                "Please verify:\n"
+                "• Ollama is running\n"
+                f"• {self.model} is installed\n"
+                "• The Ollama server is listening on\n"
+                f"{OLLAMA_HOST}\n\n"
+                f"Original error:\n{e}"
+            )
+
+        return response.message.content or ""
 
     @staticmethod
     def _format_context(chunks: List[dict]) -> str:

@@ -9,9 +9,11 @@ from .embeddings import Embedder
 from .retriever import VectorStore
 
 def ingest_pdf(pdf_path: str, embedder: Embedder, store: VectorStore) -> int:
-    print(f"\n-> Parsing {Path(pdf_path).name} ...")
+    path = Path(pdf_path)
     doc = parse_pdf(pdf_path)
-    print(f"    TS {doc.ts_number} | Release {doc.release} | Version {doc.version} | {len(doc.pages)} pages")
+    print("--------------------------------")
+    print(f"Processing:\n\n{path.name}\n\nTS Number : {doc.ts_number}\n\nRelease   : {doc.release}\n\nPages      : {len(doc.pages)}\n")
+    print("--------------------------------")
 
     print("   Chunking (section-aware) ...")
     chunks = chunk_document(doc, max_tokens=CHUNK_SIZE, overlap_tokens=CHUNK_OVERLAP)

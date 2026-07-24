@@ -1,4 +1,5 @@
-"""Parse 3GPP PDFs with PyMuPDF, extracting metadata, tables, and cleaned text."""
+"""Parse 3GPP PDFs with PyMuPDF, extracting text and tables. Metadata comes from filename."""
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -6,8 +7,9 @@ from typing import List
 import fitz  # PyMuPDF
 import pandas as pd
 
-TS_PATTERN = re.compile(r"3GPP\s+TS\s+(\d+\.\d+)\s+V(\d+\.\d+\.\d+)")
-RELEASE_PATTERN = re.compile(r"Release\s+(\d+)", re.IGNORECASE)
+FILENAME_METADATA_PATTERN = re.compile(
+    r"TS_(\d+\.\d+)_Rel_(\d+)", re.IGNORECASE
+)
 PAGE_HEADER_PATTERN = re.compile(r"^3GPP\s+TS\s+\d+\.\d+\s+V\d+\.\d+\.\d+.*$")
 
 @dataclass
@@ -26,14 +28,25 @@ class ParsedDocument:
     def full_text(self) -> str:
         return "\n".join(p.text for p in self.pages)
 
-def _extract_metadata(doc: fitz.Document) -> dict:
-    head = "".join(doc[i].get_text() for i in range(min(3, len(doc))))
-    ts_match = TS_PATTERN.search(head)
-    rel_match = RELEASE_PATTERN.search(head)
+def _extract_metadata_from_filename(pdf_path: Path) -> dict:
+    filename = pdf_path.name
+    match = FILENAME_METADATA_PATTERN.search(filename)
+    if not match:
+        raise ValueError(
+            f"Invalid filename.\n\n"
+            f"Expected format:\n"
+            f"TS_<TS_NUMBER>_Rel_<RELEASE>.pdf\n\n"
+            f"Example:\n"
+            f"TS_36.331_Rel_17.pdf\n\n"
+            f"Got: {filename}"
+        )
+    ts_number = match.group(1)
+    release = match.group(2)
+    version = match.group(2)
     return {
-        "ts_number": ts_match.group(1) if ts_match else "unknown",
-        "version": ts_match.group(2) if ts_match else "unknown",
-        "release": rel_match.group(1) if rel_match else "unknown",
+        "ts_number": ts_number,
+        "release": release,
+        "version": version,
     }
 
 def _clean_page_text(text: str) -> str:
@@ -64,9 +77,10 @@ def parse_pdf(pdf_path: str | Path) -> ParsedDocument:
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
+    metadata = _extract_metadata_from_filename(pdf_path)
+
     doc = fitz.open(str(pdf_path))
     try:
-        metadata = _extract_metadata(doc)
         pages = []
         for i, page in enumerate(doc):
             raw = page.get_text("text")

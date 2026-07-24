@@ -39,7 +39,7 @@ User Query ──► Embeds ──► Qdrant retrieves top 20 chunks
 Reranker (BGE-reranker) ──► Scores & filters down to top 5 chunks
    │
    ▼
-Gemini LLM ──► Generates technical answer with strict citations
+Ollama LLM ──► Generates technical answer with strict citations
 ```
 
 ## 🚀 Setup & Installation
@@ -56,23 +56,27 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment
-Copy the example environment file and add your Gemini API key:
+Copy the example environment file:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set your key:
-```env
-GEMINI_API_KEY=your_api_key_here
-```
-*(Get a free API key from [Google AI Studio](https://aistudio.google.com/apikey))*
+Edit `.env` if you need to override the default Ollama connection settings.
+
+Ensure **Ollama** is running:
+- Install Ollama from https://ollama.ai
+- Pull the model: `ollama pull qwen3:4b`
+- Start Ollama (default: `http://localhost:11434`)
 
 ### 4. Add 3GPP Specifications
 Place your 3GPP PDF documents in the `data/` directory.
+
+**We are using fixed file names** in the format: `TS_<TS_NUMBER>_Rel_<RELEASE>.pdf`
+
 ```text
 data/
-├── TS36.331.pdf   (LTE RRC)
-├── TS36.214.pdf   (LTE Physical Layer)
-└── TS38.331.pdf   (NR RRC)
+├── TS_36.331_Rel_17.pdf   (LTE RRC)
+├── TS_36.214_Rel_17.pdf   (LTE Physical Layer)
+└── TS_38.331_Rel_18.pdf   (NR RRC)
 ```
 *(Download from the [3GPP FTP Archive](https://www.3gpp.org/ftp/Specs/archive))*
 
@@ -126,10 +130,9 @@ telecom-rag/
 │   ├── embeddings.py      # BGE local embedding wrapper
 │   ├── retriever.py       # Local Qdrant connection & search
 │   ├── reranker.py        # Cross-encoder relevance scoring
-│   ├── llm.py             # Gemini API & strict system prompt
+│   ├── llm.py             # Ollama client & strict system prompt
 │   ├── rag.py             # Orchestrates the full RAG pipeline
 │   ├── ingest.py          # CLI tool for loading PDFs
-│   ├── main.py            # FastAPI web server
 │   └── ui.py              # Streamlit Chat UI
 ├── data/                  # Place 3GPP PDFs here
 ├── vector_db/             # Auto-created local Qdrant database
