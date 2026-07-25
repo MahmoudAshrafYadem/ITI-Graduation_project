@@ -17,7 +17,17 @@ def ingest_pdf(pdf_path: str, embedder: Embedder, store: VectorStore) -> int:
 
     print("   Chunking (section-aware) ...")
     chunks = chunk_document(doc, max_tokens=CHUNK_SIZE, overlap_tokens=CHUNK_OVERLAP)
-    print(f"    {len(chunks)} chunks")
+    if chunks:
+        sizes = [len(c.text) for c in chunks]
+        avg_size = sum(sizes) // len(sizes)
+        print(
+            f"    {len(chunks)} chunks "
+            f"(avg {avg_size} chars, "
+            f"max {max(sizes)} chars, "
+            f"min {min(sizes)} chars)"
+        )
+    else:
+        print(f"    {len(chunks)} chunks")
 
     print("   Embedding ...")
     texts = [c.text for c in chunks]

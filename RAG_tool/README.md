@@ -39,7 +39,7 @@ User Query ──► Embeds ──► Qdrant retrieves top 20 chunks
 Reranker (BGE-reranker) ──► Scores & filters down to top 5 chunks
    │
    ▼
-Ollama LLM ──► Generates technical answer with strict citations
+OpenRouter API ──► Generates technical answer with strict citations
 ```
 
 ## 🚀 Setup & Installation
@@ -60,12 +60,15 @@ Copy the example environment file:
 ```bash
 cp .env.example .env
 ```
-Edit `.env` if you need to override the default Ollama connection settings.
+Add your OpenRouter API key to `.env` (this file is intentionally excluded from Git):
+```env
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=openrouter/free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+```
 
-Ensure **Ollama** is running:
-- Install Ollama from https://ollama.ai
-- Pull the model: `ollama pull qwen3:4b`
-- Start Ollama (default: `http://localhost:11434`)
+The application sends only the question and retrieved specification chunks to
+OpenRouter. Embeddings, Qdrant, and reranking remain local.
 
 ### 4. Add 3GPP Specifications
 Place your 3GPP PDF documents in the `data/` directory.
@@ -80,7 +83,117 @@ data/
 ```
 *(Download from the [3GPP FTP Archive](https://www.3gpp.org/ftp/Specs/archive))*
 
-## 💻 Usage
+### Step 3: Enable Debug Mode (Optional)
+Set `DEBUG_MODE=true` in `.env` to enable:
+- Pipeline stage timing for every query
+- Prompt statistics (character count, estimated tokens, chunk sizes)
+- Per-stage performance metrics in the Streamlit sidebar
+- Console output with a full pipeline report
+
+### Performance Tuning
+All retrieval and chunking parameters are configurable via `.env`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOP_K` | `5` | Number of chunks returned to the LLM |
+| `FETCH_MULTIPLIER` | `4` | Multiplier for chunks fetched from Qdrant before reranking |
+| `CHUNK_SIZE` | `800` | Maximum tokens per chunk |
+| `CHUNK_OVERLAP` | `100` | Overlap tokens between chunks |
+| `DEBUG_MODE` | `false` | Enable profiling dashboard and verbose logging |
+
+### Configuration Reference
+```env
+# OpenRouter
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_MODEL=openrouter/free
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# Debug / Profiling
+DEBUG_MODE=true
+WARN_INFERENCE_THRESHOLD=20
+WARN_PROMPT_THRESHOLD=8000
+
+# Retrieval
+TOP_K=5
+FETCH_MULTIPLIER=4
+
+# Chunking
+CHUNK_SIZE=800
+CHUNK_OVERLAP=100
+```
+
+## 🔧 Chunking Strategy (Redesigned)
+
+The chunker has been redesigned for 3GPP specifications to produce semantically coherent, narrowly scoped chunks.
+
+### Chunk Types
+
+| Type | Description |
+|------|-------------|
+| \section_content\ | General explanatory text within a section |
+| \event_definition\ | Measurement event definitions (A1-A6, D1, etc.) |
+| \sn1\ | ASN.1 grammar definitions |
+| \	able\ | Extracted tables |
+| \igure\ | Figure captions and descriptions |
+| \nnex\ | Annex/appendix content |
+| \history\ | Change/revision history, CR entries |
+| \ormula\ | Mathematical formulas |
+
+### Chunk Boundaries
+
+A new chunk is created at:
+
+* Section header transitions (major and minor)
+* ASN.1 block boundaries (\-- TAG-START\, \-- ASN1START\)
+* Figure boundaries
+* Table boundaries
+* Annex boundaries
+* Change/revision history sections
+* CR correction reports
+
+### Target Sizes
+
+* Average: 200--350 tokens
+* Maximum: 500 tokens
+* Overlap: 15--50 words
+
+### Chunk ID Format
+
+\TS_NUMBER.SECTION_NUMBER.CHUNK_TYPE.SEQUENCE
+\
+Example:
+
+\36.331.5.5.4.4.event_definition.001
+\
+## ⚙️ Optimization Configuration
+
+The pipeline is fully configurable via `.env` for performance tuning.
+
+### Chunking
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHUNK_SIZE` | `300` | Max tokens per chunk (target 200–350) |
+| `CHUNK_OVERLAP` | `50` | Overlap tokens between chunks |
+| `MAX_PROMPT_TOKENS` | `3000` | Stop adding chunks after this token budget |
+
+### Retrieval
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TOP_K` | `3` | Final chunks sent to the LLM |
+| `FETCH_MULTIPLIER` | `2` | Chunks retrieved from Qdrant before reranking |
+| `REMOVE_DUPLICATES` | `true` | Deduplicate chunks from same page/section |
+| `FILTER_ASN1` | `true` | Filter ASN.1 grammar and revision table chunks |
+| `FILTER_CHANGE_HISTORY` | `true` | Filter CR history and change log chunks |
+
+### Debug / Profiling
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEBUG_MODE` | `false` | Enable profiling dashboard and verbose logging |
+| `WARN_INFERENCE_THRESHOLD` | `20` | Warn if OpenRouter inference exceeds this many seconds |
+| `WARN_PROMPT_THRESHOLD` | `3000` | Warn if prompt exceeds this many characters |
 
 ### Step 1: Ingest PDFs into Local Vector Database
 Run the ingestion CLI. This will parse the PDFs, chunk them, generate embeddings, and store them in Qdrant.
@@ -96,13 +209,7 @@ python -m streamlit run app/ui.py
 ```
 You can now interact with the assistant in your browser. Use the sidebar to filter by specific TS numbers or Releases.
 
-*(Optional)* **Start the FastAPI Backend**
-If you prefer to use the API instead of the Streamlit UI:
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-### Example API Response (FastAPI)
+### Response format
 ```json
 {
   "answer": "According to TS 36.331, Event A3 is triggered when a neighbor becomes offset better than the serving cell. The formula is: `Mn + Ofn + Ocn − Hys > Ms + Ofs + Ocs`",
@@ -125,12 +232,13 @@ uvicorn app.main:app --reload --port 8000
 telecom-rag/
 ├── app/
 │   ├── config.py          # Environment variables & constants
+│   ├── profiler.py        # Pipeline profiling & timing utility
 │   ├── parser.py          # PyMuPDF text & table extraction
 │   ├── chunker.py         # 3GPP section-aware splitting logic
 │   ├── embeddings.py      # BGE local embedding wrapper
 │   ├── retriever.py       # Local Qdrant connection & search
 │   ├── reranker.py        # Cross-encoder relevance scoring
-│   ├── llm.py             # Ollama client & strict system prompt
+│   ├── llm.py             # OpenRouter client & strict system prompt
 │   ├── rag.py             # Orchestrates the full RAG pipeline
 │   ├── ingest.py          # CLI tool for loading PDFs
 │   └── ui.py              # Streamlit Chat UI

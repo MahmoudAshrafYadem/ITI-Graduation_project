@@ -4,13 +4,16 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List
+import time
 import fitz  # PyMuPDF
 import pandas as pd
+from . import profiler
 
 FILENAME_METADATA_PATTERN = re.compile(
     r"TS_(\d+\.\d+)_Rel_(\d+)", re.IGNORECASE
 )
 PAGE_HEADER_PATTERN = re.compile(r"^3GPP\s+TS\s+\d+\.\d+\s+V\d+\.\d+\.\d+.*$")
+SECTION_RE = re.compile(r"^(\d+(?:\.\d+){0,4})\s+(.+)$")
 
 @dataclass
 class ParsedPage:
@@ -23,6 +26,7 @@ class ParsedDocument:
     release: str
     version: str
     pages: List[ParsedPage] = field(default_factory=list)
+    section_titles: dict = field(default_factory=dict)
 
     @property
     def full_text(self) -> str:
@@ -79,22 +83,33 @@ def parse_pdf(pdf_path: str | Path) -> ParsedDocument:
 
     metadata = _extract_metadata_from_filename(pdf_path)
 
+    profiler.stage_start("Parse PDF")
     doc = fitz.open(str(pdf_path))
     try:
         pages = []
+        section_titles = {}
+        current_section = "0"
         for i, page in enumerate(doc):
             raw = page.get_text("text")
             cleaned = _clean_page_text(raw)
+            for line in cleaned.split("\n"):
+                m = SECTION_RE.match(line.strip())
+                if m:
+                    current_section = m.group(1)
+                    section_titles[current_section] = m.group(2).strip()
             tables_md = _extract_tables_to_markdown(page)
             if tables_md:
                 cleaned += f"\n\n[EXTRACTED TABLES]\n{tables_md}\n"
             if cleaned:
                 pages.append(ParsedPage(page_number=i + 1, text=cleaned))
-        return ParsedDocument(
+        result = ParsedDocument(
             ts_number=metadata["ts_number"],
             release=metadata["release"],
             version=metadata["version"],
             pages=pages,
+            section_titles=section_titles,
         )
+        profiler.stage_end("Parse PDF", {"pages": len(pages), "file": pdf_path.name})
+        return result
     finally:
         doc.close()

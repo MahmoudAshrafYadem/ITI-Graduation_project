@@ -1,7 +1,16 @@
-"""Ollama LLM client"""
+"""OpenRouter LLM client using its OpenAI-compatible REST endpoint."""
+import json
 from typing import List
-from ollama import Client
-from .config import OLLAMA_HOST, OLLAMA_MODEL
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+from abc import ABC, abstractmethod
+from .config import (
+    OPENROUTER_API_KEY,
+    OPENROUTER_MODEL,
+    OPENROUTER_BASE_URL,
+    TEMPERATURE,
+    MAX_OUTPUT_TOKENS,
+)
 
 SYSTEM_PROMPT = """You are a Senior LTE/5G NR RF Optimization Engineer with deep expertise in 3GPP specifications.
 
@@ -26,44 +35,35 @@ Each chunk is provided as:
 """
 
 
-class OllamaLLM:
+class BaseLLM(ABC):
+    @abstractmethod
+    def generate(self, user_question: str, context_chunks: List[dict]) -> str:
+        ...
+
+
+class OpenRouterLLM(BaseLLM):
     def __init__(
         self,
-        host: str = OLLAMA_HOST,
-        model: str = OLLAMA_MODEL,
+        api_key: str = OPENROUTER_API_KEY,
+        model: str = OPENROUTER_MODEL,
+        base_url: str = OPENROUTER_BASE_URL,
+        temperature: float = TEMPERATURE,
+        max_output_tokens: int = MAX_OUTPUT_TOKENS,
     ):
-        if not host:
-            raise ValueError("OLLAMA_HOST is not set. Put it in .env")
+        if not api_key:
+            raise ValueError("OPENROUTER_API_KEY is not set. Put it in .env")
         if not model:
-            raise ValueError("OLLAMA_MODEL is not set. Put it in .env")
-        self.client = Client(host=host)
+            raise ValueError("OPENROUTER_MODEL is not set. Put it in .env")
+        self.api_key = api_key
+        self.endpoint = f"{base_url.rstrip('/')}/chat/completions"
         self.model = model
+        self.temperature = temperature
+        self.max_output_tokens = max_output_tokens
 
-        try:
-            models = self.client.list()
-        except Exception as e:
-            raise RuntimeError(
-                "Cannot connect to Ollama.\n\n"
-                f"Host:\n{host}\n\n"
-                "Please verify:\n"
-                "• Ollama is running\n"
-                "• The server is reachable\n\n"
-                f"Original error:\n{e}"
-            ) from e
-
-        model_names = [m.model for m in models.models]
-        if self.model not in model_names:
-            raise ValueError(
-                f'Model "{self.model}" is not installed.\n\n'
-                f"Installed models:\n\n"
-                + "\n".join(f"• {name}" for name in model_names)
-                + "\n\nRun:\n\n"
-                f"ollama pull {self.model}"
-            )
-
-    def generate(self, user_question: str, context_chunks: List[dict]) -> str:
+    def generate(self, user_question: str, context_chunks: List[dict], history: List[dict] = None) -> str:
         context_text = self._format_context(context_chunks)
-        prompt = f"""User question:
+        
+        user_prompt_content = f"""User question:
 {user_question}
 
 ---
@@ -73,39 +73,54 @@ Context from 3GPP specifications:
 
 Now answer the user's question following ALL the rules in your system instructions.
 """
+        
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            for message in history:
+                messages.append({"role": message["role"], "content": message["content"]})
+        messages.append({"role": "user", "content": user_prompt_content})
+
+        # For debugging, write the final constructed prompt to a file
         with open("last_prompt.txt", "w", encoding="utf-8") as f:
             f.write("SYSTEM PROMPT\n")
             f.write("=" * 80 + "\n")
             f.write(SYSTEM_PROMPT)
-
-            f.write("\n\nUSER PROMPT\n")
+            f.write("\n\nCONVERSATION HISTORY (if any)\n")
             f.write("=" * 80 + "\n")
-            f.write(prompt)
+            if history:
+                for msg in history:
+                    f.write(f"[{msg['role']}]\n{msg['content']}\n\n")
+            f.write("\n\nUSER PROMPT (with context)\n")
+            f.write("=" * 80 + "\n")
+            f.write(user_prompt_content)
 
         try:
-            response = self.client.chat(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                options={
-                    "temperature": 0.1,
-                    "top_p": 0.9,
+            request_body = json.dumps({
+                "model": self.model,
+                "messages": messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_output_tokens,
+            }).encode("utf-8")
+            request = Request(
+                self.endpoint,
+                data=request_body,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
                 },
+                method="POST",
             )
-        except Exception as e:
+            with urlopen(request, timeout=60) as response:
+                response_data = json.load(response)
+            return response_data["choices"][0]["message"]["content"] or ""
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
             return (
-                "Cannot connect to Ollama.\n\n"
+                "Cannot connect to OpenRouter.\n\n"
                 "Please verify:\n"
-                "• Ollama is running\n"
-                f"• {self.model} is installed\n"
-                "• The Ollama server is listening on\n"
-                f"{OLLAMA_HOST}\n\n"
+                "• your API key is valid\n"
+                f"• model {self.model} is available\n\n"
                 f"Original error:\n{e}"
             )
-
-        return response.message.content or ""
 
     @staticmethod
     def _format_context(chunks: List[dict]) -> str:

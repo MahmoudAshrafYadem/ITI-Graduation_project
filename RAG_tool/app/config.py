@@ -16,13 +16,30 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "telecom_3gpp")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-en-v1.5")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))
 
-# Ollama (local LLM server)
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:4b")
+# OpenRouter API
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.0"))
+MAX_OUTPUT_TOKENS = int(os.getenv("MAX_OUTPUT_TOKENS", "1000"))
+
+# Debug Mode: enables pipeline profiling, timing, and prompt statistics
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
+# Performance Thresholds (seconds)
+WARN_INFERENCE_THRESHOLD = float(os.getenv("WARN_INFERENCE_THRESHOLD", "20"))
+WARN_PROMPT_THRESHOLD = int(os.getenv("WARN_PROMPT_THRESHOLD", "8000"))
+
+# Optimization Parameters
+MAX_PROMPT_TOKENS = int(os.getenv("MAX_PROMPT_TOKENS", "3000"))
+REMOVE_DUPLICATES = os.getenv("REMOVE_DUPLICATES", "true").lower() == "true"
+FILTER_ASN1 = os.getenv("FILTER_ASN1", "true").lower() == "true"
+FILTER_CHANGE_HISTORY = os.getenv("FILTER_CHANGE_HISTORY", "true").lower() == "true"
 
 # Retrieval
-TOP_K = int(os.getenv("TOP_K", "5"))
+TOP_K = int(os.getenv("TOP_K", "3"))
+FETCH_MULTIPLIER = int(os.getenv("FETCH_MULTIPLIER", "2"))
 
 # Chunking
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "100"))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "300"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "50"))

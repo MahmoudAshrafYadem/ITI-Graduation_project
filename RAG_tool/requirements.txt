@@ -19,9 +19,6 @@ numpy==2.3.1
 # Vector Database
 qdrant-client==1.15.1
 
-# Local LLM (Ollama)
-ollama
-
 # Utilities
 python-dotenv==1.1.1
 tqdm==4.67.1
