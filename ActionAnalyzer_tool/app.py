@@ -45,12 +45,13 @@ from config import load_config, save_config, config_path_str
 # ══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIG
 # ══════════════════════════════════════════════════════════════════════
-st.set_page_config(
-    page_title="NetOps Impact Analyzer",
-    page_icon="📡",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+if not st.session_state.get("_hub_mode", False):
+    st.set_page_config(
+        page_title="NetOps Impact Analyzer",
+        page_icon="📡",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 # ── Inject custom CSS ──────────────────────────────────────────────────
 st.markdown(

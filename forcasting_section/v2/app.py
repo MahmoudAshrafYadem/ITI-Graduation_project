@@ -20,7 +20,8 @@ from plotting import build_forecast_figure, build_feature_importance_figure
 from diagnostics import render_residual_analysis
 
 
-st.set_page_config(page_title="LTE KPI Forecaster", layout="wide")
+if not st.session_state.get("_hub_mode", False):
+    st.set_page_config(page_title="LTE KPI Forecaster", layout="wide")
 
 st.title("📡 LTE Cell KPI Forecaster")
 st.markdown("Upload your cleaned LTE data, select a cell and KPI, choose a forecast model, and get a forecast.")

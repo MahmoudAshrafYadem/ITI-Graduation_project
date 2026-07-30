@@ -82,7 +82,7 @@ with st.sidebar:
     baseline_mode = st.radio(
         "Baseline Mode",
         options=["last_week", "4week_rolling_avg"],
-        format_func=lambda x: "Same weekdays last week" if x == "last_week" else "4-week rolling average"
+        format_func=lambda x: "Same weekdays last week" if x == "last_week" else "4-week rolling average",
     )
     
     enable_significance_test = st.checkbox("Enable t-test significance filter", value=True)

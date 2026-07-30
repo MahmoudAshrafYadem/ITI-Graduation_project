@@ -1,45 +1,69 @@
-# Python
+# Python bytecode, tooling, and build artifacts
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
+.eggs/
+build/
+dist/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
-# Virtual environments
+# Virtual environments (at the repository root or inside any app)
 .venv/
 venv/
 env/
 ENV/
 
-# Environment variables
+# Secrets and local configuration
 .env
-.env.local
-RAG_tool/.env
-ActionAnalyzer_tool/.env
+.env.*
+!.env.example
+*.pem
+*.key
 
-# IDE
+# Jupyter checkpoints and local notebook runtime state
+.ipynb_checkpoints/
+
+# IDE and OS files
 .vscode/
 .idea/
+*.code-workspace
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Streamlit
+# Streamlit and application runtime files
 .streamlit/
+last_prompt.txt
+*.log
+*.pid
+*.lock
 
-# Project Specific Data
-# Ignore all .pdf files within RAG_tool/data/ but not the folder itself, allowing .gitkeep
+# RAG: externally supplied source documents, local vector store, and model cache
 RAG_tool/data/*.pdf
 !RAG_tool/data/.gitkeep
-
-# Local Qdrant Vector Database
 RAG_tool/vector_db/
-
-# Model Cache (if downloaded locally)
 RAG_tool/models/
+RAG_tool/.cache/
 
-# User specific ignores
-last_prompt.txt
-storage.sqlite
+# Local databases created by the apps
+*.sqlite
+*.sqlite3
+*.db
+
+# Generated analysis/report outputs (keep source data and configuration tracked)
+OUTPUT/
+
+# Generated ML artifacts
+*.joblib
+*.pkl
+*.pickle
+*.onnx

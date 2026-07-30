@@ -83,7 +83,7 @@ Our analyzer implements a **three-layer analytical pipeline**:
 |---------|-------------|
 | **13 KPI Categories** | Traffic, Integrity, Accessibility, Retainability, Mobility, Availability, CSFB, VoLTE, RRC Re-establishment |
 | **142 Detection Rules** | Correlated counter analysis with configurable thresholds |
-| **3 Baseline Modes** | Last-week parallel, 4-week rolling average, custom date range |
+| **2 Baseline Modes** | Last-week parallel, 4-week rolling average |
 | **Advisory Statistical Evidence** | Welch's t-test with p-value reporting; no longer blocks severe threshold-based degradation |
 | **Confidence & Severity Labels** | `rf_severity`, `analysis_confidence`, and explainable confidence reasons |
 | **Data Quality Engine** | Unit validation, sentinel detection, baseline imputation used in day-by-day comparison |
@@ -250,10 +250,9 @@ Welch's t-test is now treated as **advisory evidence**. A cell is not hidden jus
 ### 3.2 Baseline Window Strategies
 
 | Mode | Description | Use Case |
-|------|-------------|----------|
+| |-------------|----------|
 | **Last Week** | Same N days from previous week | Detecting sudden incidents |
 | **4-Week Rolling** | Median of same weekdays over 4 weeks | Smoothing weekly patterns |
-| **Custom Range** | User-defined start/end dates | Special event analysis |
 
 ### 3.3 Statistical Significance Testing
 
@@ -589,7 +588,7 @@ streamlit run LTE_RAN_KPI_Analysis_Tool/app_streamlit.py
 | [Browse] C:\data\kpi_export.xlsx  [Sheet: v Sheet1]                        |
 +-----------------------------------------------------------------------------+
 | KPI: [v DL Traffic        ]  Days: [4 ^]  Threshold: [30.0  ]            |
-| Baseline Mode: (*) Last Week  ( ) 4-Week Avg  ( ) Custom Range             |
+| Baseline Mode: (*) Last Week  ( ) 4-Week Avg |
 | [x] Require complete days    [x] Enable t-test significance evidence       |
 |                                                                              |
 | [Run Selected KPI] [Analyze All KPIs] [Generate Report] [Save CSV]         |

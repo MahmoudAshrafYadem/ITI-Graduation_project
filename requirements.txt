@@ -1,0 +1,11 @@
+# Unified environment for telecom_hub.py.
+# Component requirements remain available for standalone installations.
+-r RAG_tool/requirements.txt
+-r LTE_RAN_KPI_Analysis_Tool/requirements.txt
+-r ActionAnalyzer_tool/requirements.txt
+
+# Test runner used by LTE_RAN_KPI_Analysis_Tool/app/test_*.py
+pytest>=8.0.0
+
+# Optional RAG profiling support (the app degrades gracefully if absent).
+psutil>=5.9.0
