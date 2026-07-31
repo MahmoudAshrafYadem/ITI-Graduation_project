@@ -62,32 +62,6 @@ st.markdown("""
     --danger:      #FF4D4D;
     --bg-card:     rgba(255,255,255,0.04);
     --border:      rgba(0,194,255,0.18);
-    --bg-page:     #0A1628;
-}
-
-/* ── Global page background ── */
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: var(--bg-page) !important;
-}
-
-/* ── Improve readability ── */
-.stMarkdown p, .stMarkdown li, .stMarkdown div {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    color: #FFFFFF;
-}
-.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-    color: #FFFFFF;
-}
-.stCaption {
-    font-size: 0.85rem !important;
-    color: #FFFFFF !important;
-}
-.stDataFrame {
-    font-size: 0.82rem !important;
-}
-[data-testid="stSidebar"] .stCaption {
-    font-size: 0.78rem !important;
 }
 
 /* ── Hero banner ── */
@@ -119,7 +93,7 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 .kpi-hero .subtitle {
     font-size: 0.88rem;
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.85);
     margin: 0;
     letter-spacing: 0.3px;
 }
@@ -178,7 +152,7 @@ html, body, [data-testid="stAppViewContainer"] {
     font-size: 0.73rem;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.85);
     margin-bottom: 6px;
 }
 .metric-card .m-value {
@@ -226,12 +200,12 @@ html, body, [data-testid="stAppViewContainer"] {
 .empty-state {
     text-align: center;
     padding: 60px 20px;
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.8);
 }
 .empty-state .es-icon { font-size: 3.5rem; margin-bottom: 14px; }
 .empty-state h3 {
     font-size: 1.1rem;
-    color: #FFFFFF;
+    color: #ffffff;
     margin-bottom: 8px;
 }
 .empty-state p {
@@ -239,7 +213,6 @@ html, body, [data-testid="stAppViewContainer"] {
     max-width: 380px;
     margin: 0 auto;
     line-height: 1.6;
-    color: #FFFFFF;
 }
 
 /* ── Sidebar polish ── */
@@ -274,7 +247,7 @@ html, body, [data-testid="stAppViewContainer"] {
 .sidebar-logo .logo-text {
     font-size: 0.82rem;
     font-weight: 700;
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.85);
     line-height: 1.3;
     letter-spacing: 0.2px;
 }
@@ -283,9 +256,9 @@ html, body, [data-testid="stAppViewContainer"] {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: #FFFFFF;
+    color: #ffffff;
     padding: 16px 0 6px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.15);
     margin-bottom: 10px;
 }
 
@@ -320,22 +293,22 @@ html, body, [data-testid="stAppViewContainer"] {
 .callout.success {
     background: rgba(0,217,126,0.08);
     border-left: 3px solid var(--success);
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.8);
 }
 .callout.info {
     background: rgba(0,194,255,0.07);
     border-left: 3px solid var(--accent);
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.75);
 }
 .callout.warning {
     background: rgba(255,180,0,0.08);
     border-left: 3px solid var(--warning);
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.8);
 }
 .callout.danger {
     background: rgba(255,77,77,0.08);
     border-left: 3px solid var(--danger);
-    color: #FFFFFF;
+    color: rgba(255,255,255,0.8);
 }
 </style>
 """, unsafe_allow_html=True)
@@ -371,13 +344,14 @@ def _apply_chart_style(fig, ax):
     """Apply consistent dark theme to a matplotlib figure."""
     fig.patch.set_facecolor("#0A1628")
     ax.set_facecolor("#0D1E35")
-    ax.tick_params(colors="rgba(255,255,255,0.55)", labelsize=8)
-    ax.xaxis.label.set_color("rgba(255,255,255,0.55)")
-    ax.yaxis.label.set_color("rgba(255,255,255,0.55)")
+    # Use (r,g,b,a) tuples — matplotlib does not accept CSS rgba() strings
+    ax.tick_params(colors=(1, 1, 1, 0.75), labelsize=8)
+    ax.xaxis.label.set_color((1, 1, 1, 0.75))
+    ax.yaxis.label.set_color((1, 1, 1, 0.75))
     ax.title.set_color("#FFFFFF")
     for spine in ax.spines.values():
-        spine.set_edgecolor("rgba(255,255,255,0.1)")
-    ax.grid(True, color="rgba(255,255,255,0.06)", linewidth=0.6)
+        spine.set_edgecolor((1, 1, 1, 0.15))
+    ax.grid(True, color=(1, 1, 1, 0.08), linewidth=0.6)
 
 def _apply_chart_style_multi(fig, axes):
     for ax in (axes if hasattr(axes, "__iter__") else [axes]):
@@ -455,9 +429,9 @@ with st.sidebar:
 
     num_baseline_weeks = 4
     if baseline_mode == BASELINE_MODE_4WEEK_AVG:
-        num_baseline_weeks = st.number_input(
+        num_baseline_weeks = st.slider(
             "Lookback weeks",
-            min_value=1, max_value=12, value=4, step=1,
+            min_value=1, max_value=12, value=4,
             help="How many prior weeks to include in the Historical Weekday Median baseline",
         )
 
@@ -835,7 +809,7 @@ with tabs[1]:
                 wedgeprops={"edgecolor": "#0A1628", "linewidth": 2},
             )
             for t in texts:
-                t.set_color("rgba(255,255,255,0.75)")
+                t.set_color((1, 1, 1, 0.9))
                 t.set_fontsize(9)
             for at in autotexts:
                 at.set_color("#fff")
@@ -959,7 +933,7 @@ with tabs[2]:
                 f"{trend_kpi} — Enhancement Potential: {enhancement:+.2f}%",
                 fontweight="bold", fontsize=12, pad=10
             )
-            ax.legend(fontsize=9, framealpha=0.3, facecolor="#0D1E35", edgecolor="rgba(255,255,255,0.1)")
+            ax.legend(fontsize=9, framealpha=0.3, facecolor="#0D1E35", edgecolor=(1, 1, 1, 0.15))
             _apply_chart_style(fig, ax)
             fig.tight_layout()
             st.pyplot(fig)

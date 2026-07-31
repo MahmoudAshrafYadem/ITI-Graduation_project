@@ -5,7 +5,7 @@ from .embeddings import Embedder
 from .retriever import VectorStore
 from .llm import OpenRouterLLM
 from .reranker import Reranker
-from .config import TOP_K, FETCH_MULTIPLIER, DEBUG_MODE
+from .config import TOP_K, FETCH_MULTIPLIER, DEBUG_MODE, MAX_PROMPT_TOKENS
 from . import profiler
 
 UNWANTED_KEYWORDS = [
@@ -116,7 +116,7 @@ class TelecomRAG:
         profiler.stage_end("Reranking", {"returned": len(reranked_chunks)})
 
         profiler.stage_start("Context Budget")
-        budgeted_chunks = self._apply_context_budget(reranked_chunks, max_tokens=3000)
+        budgeted_chunks = self._apply_context_budget(reranked_chunks, max_tokens=MAX_PROMPT_TOKENS)
         profiler.stage_end("Context Budget")
 
         references = []

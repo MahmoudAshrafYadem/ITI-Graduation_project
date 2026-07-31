@@ -35,31 +35,6 @@ st.markdown(
     --bg-panel: #0D1E35;
 }
 
-/* ── Global page background ── */
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: var(--bg-main) !important;
-}
-
-/* ── Improve readability ── */
-.stMarkdown p, .stMarkdown li, .stMarkdown div {
-    font-size: 0.9rem;
-    line-height: 1.6;
-    color: rgba(255,255,255,0.85);
-}
-.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-    color: #FFFFFF;
-}
-.stCaption {
-    font-size: 0.85rem !important;
-    color: rgba(255,255,255,0.65) !important;
-}
-.stDataFrame {
-    font-size: 0.82rem !important;
-}
-[data-testid="stSidebar"] .stCaption {
-    font-size: 0.78rem !important;
-}
-
 /* ── Hero banner ── */
 .rag-hero {
     background: linear-gradient(135deg, #0A1628 0%, #0E2448 55%, #0A1628 100%);
@@ -227,7 +202,7 @@ html, body, [data-testid="stAppViewContainer"] {
 .sidebar-logo .logo-text {
     font-size: 0.82rem;
     font-weight: 700;
-    color: rgba(255,255,255,0.85);
+    color: #ffffff;
     line-height: 1.3;
 }
 .sidebar-section {
@@ -235,9 +210,9 @@ html, body, [data-testid="stAppViewContainer"] {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: rgba(255,255,255,0.35);
+    color: #ffffff;
     padding: 16px 0 6px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.15);
     margin-bottom: 10px;
 }
 
