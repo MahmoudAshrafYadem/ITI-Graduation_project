@@ -20,7 +20,6 @@ from KPI_Configuration import (
     CELL_COL,
     BASELINE_MODE_LAST_WEEK,
     BASELINE_MODE_4WEEK_AVG,
-    BASELINE_MODE_CUSTOM,
     KPI_CONFIGS,
 )
 from clean_excel_and_helpers import find_matching_column
@@ -65,8 +64,7 @@ class LTEKPIAnalyzerApp:
         
         # Baseline mode settings
         self.baseline_mode = tk.StringVar(value=BASELINE_MODE_LAST_WEEK)
-        self.custom_baseline_start = tk.StringVar()
-        self.custom_baseline_end = tk.StringVar()
+        self.num_baseline_weeks = tk.IntVar(value=4)
         
         # Statistical significance test
         self.enable_significance_test = tk.BooleanVar(value=True)
@@ -143,20 +141,12 @@ class LTEKPIAnalyzerApp:
         
         ttk.Radiobutton(baseline_frame, text="Same weekdays last week only", variable=self.baseline_mode, 
                         value=BASELINE_MODE_LAST_WEEK).pack(side="left", padx=5)
-        ttk.Radiobutton(baseline_frame, text="Same weekdays last 4 weeks", variable=self.baseline_mode,
+        ttk.Radiobutton(baseline_frame, text="Historical Weekday Median:", variable=self.baseline_mode,
                         value=BASELINE_MODE_4WEEK_AVG).pack(side="left", padx=5)
-        ttk.Radiobutton(baseline_frame, text="Custom Range", variable=self.baseline_mode,
-                        value=BASELINE_MODE_CUSTOM).pack(side="left", padx=5)
-        
-        # Custom date range
-        ttk.Label(settings_frame, text="Custom Baseline:").grid(row=1, column=4, sticky="w", padx=5, pady=5)
-        custom_frame = ttk.Frame(settings_frame)
-        custom_frame.grid(row=1, column=5, columnspan=2, sticky="w", padx=5, pady=5)
-        ttk.Label(custom_frame, text="Start:").pack(side="left")
-        ttk.Entry(custom_frame, textvariable=self.custom_baseline_start, width=12).pack(side="left", padx=2)
-        ttk.Label(custom_frame, text="End:").pack(side="left", padx=(5, 0))
-        ttk.Entry(custom_frame, textvariable=self.custom_baseline_end, width=12).pack(side="left", padx=2)
-        
+        ttk.Spinbox(baseline_frame, from_=1, to=12, textvariable=self.num_baseline_weeks,
+                    width=4).pack(side="left")
+        ttk.Label(baseline_frame, text="weeks").pack(side="left", padx=(2, 10))
+
         # Row 2: Checkboxes and buttons
         ttk.Checkbutton(
             settings_frame, text="Require complete days",
@@ -371,8 +361,9 @@ class LTEKPIAnalyzerApp:
                 degradation_threshold=threshold,
                 require_complete_days=complete_days,
                 baseline_mode=baseline_mode,
-                custom_baseline_start=self.custom_baseline_start.get() if baseline_mode == BASELINE_MODE_CUSTOM else None,
-                custom_baseline_end=self.custom_baseline_end.get() if baseline_mode == BASELINE_MODE_CUSTOM else None,
+                num_baseline_weeks=int(self.num_baseline_weeks.get()),
+                custom_baseline_start=None,
+                custom_baseline_end=None,
                 enable_significance_test=enable_sig,
                 log_callback=self.log,
             )
@@ -458,6 +449,7 @@ class LTEKPIAnalyzerApp:
                 num_days=num_days,
                 require_complete_days=complete_days,
                 baseline_mode=baseline_mode,
+                num_baseline_weeks=int(self.num_baseline_weeks.get()),
                 enable_significance_test=enable_sig,
                 log_callback=self.log,
             )

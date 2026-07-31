@@ -29,6 +29,7 @@ from KPI_Configuration import (
     CELL_ID_COLS,
     KPI_CONFIGS,
     IMPUTATION_CONFIG,
+    BASELINE_MODE_4WEEK_AVG,
 )
 from clean_excel_and_helpers import (
     clean_excel_columns,
@@ -335,6 +336,7 @@ def analyze_selected_kpi(
     degradation_threshold,
     require_complete_days=True,
     baseline_mode="last_week",
+    num_baseline_weeks=4,
     custom_baseline_start=None,
     custom_baseline_end=None,
     enable_significance_test=True,
@@ -381,12 +383,20 @@ def analyze_selected_kpi(
 
     # Periods
     last_date, recent_start, recent_end, baseline_start, baseline_end = get_periods_enhanced(
-        df_kpi, DATE_COL, num_days, baseline_mode, custom_baseline_start, custom_baseline_end)
+        df_kpi, DATE_COL, num_days, baseline_mode, custom_baseline_start, custom_baseline_end,
+        num_baseline_weeks=num_baseline_weeks)
 
     recent_dates = list(pd.date_range(recent_start, recent_end, freq="D"))
     baseline_dates = list(pd.date_range(baseline_start, baseline_end, freq="D"))
     expected_recent = len(recent_dates)
     expected_baseline = len(baseline_dates)
+    # For rolling-avg mode the day-by-day comparator produces one baseline
+    # value per recent day (the same-weekday median across the window).
+    # baseline_days_count therefore maxes at num_days, not the window length,
+    # so expected_baseline must equal expected_recent or require_complete_days
+    # would reject every cell.
+    if baseline_mode == BASELINE_MODE_4WEEK_AVG:
+        expected_baseline = expected_recent
 
     target_obs = df_kpi.dropna(subset=[target_kpi])
 

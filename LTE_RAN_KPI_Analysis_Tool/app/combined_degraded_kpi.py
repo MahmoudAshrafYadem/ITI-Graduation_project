@@ -28,6 +28,7 @@ def analyze_all_kpis(
     num_days,
     require_complete_days=True,
     baseline_mode="last_week",
+    num_baseline_weeks=4,
     enable_significance_test=True,
     log_callback=None
 ):
@@ -80,6 +81,7 @@ def analyze_all_kpis(
                 degradation_threshold=threshold,
                 require_complete_days=require_complete_days,
                 baseline_mode=baseline_mode,
+                num_baseline_weeks=num_baseline_weeks,
                 enable_significance_test=enable_significance_test,
                 log_callback=log_callback,
             )

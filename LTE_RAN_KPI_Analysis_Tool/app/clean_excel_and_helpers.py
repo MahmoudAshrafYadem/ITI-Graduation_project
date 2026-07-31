@@ -267,14 +267,15 @@ def perform_ttest(recent_values, baseline_values):
         return False, np.nan, np.nan
 
 
-def get_periods_enhanced(df, date_col, num_days, baseline_mode, 
-                          custom_baseline_start=None, custom_baseline_end=None):
+def get_periods_enhanced(df, date_col, num_days, baseline_mode,
+                          custom_baseline_start=None, custom_baseline_end=None,
+                          num_baseline_weeks=4):
     """
     Get analysis periods with configurable baseline window.
     
     Supports three baseline modes:
     - BASELINE_MODE_LAST_WEEK: Same N days from last week
-    - BASELINE_MODE_4WEEK_AVG: 4-week rolling average
+    - BASELINE_MODE_4WEEK_AVG: Rolling average over num_baseline_weeks weeks
     - BASELINE_MODE_CUSTOM: User-defined date range
     
     Args:
@@ -284,6 +285,7 @@ def get_periods_enhanced(df, date_col, num_days, baseline_mode,
         baseline_mode: Baseline calculation mode
         custom_baseline_start: Custom baseline start date (for CUSTOM mode)
         custom_baseline_end: Custom baseline end date (for CUSTOM mode)
+        num_baseline_weeks: Number of weeks for rolling average (default 4)
         
     Returns:
         Tuple of (last_date, recent_start, recent_end, baseline_start, baseline_end)
@@ -304,7 +306,8 @@ def get_periods_enhanced(df, date_col, num_days, baseline_mode,
         baseline_end = recent_end - pd.Timedelta(days=7)
         
     elif baseline_mode == BASELINE_MODE_4WEEK_AVG:
-        baseline_start = recent_start - pd.Timedelta(days=28)
+        weeks = max(1, int(num_baseline_weeks))
+        baseline_start = recent_start - pd.Timedelta(weeks=weeks)
         baseline_end = recent_start - pd.Timedelta(days=1)
         
     elif baseline_mode == BASELINE_MODE_CUSTOM:
