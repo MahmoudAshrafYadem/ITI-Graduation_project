@@ -40,12 +40,13 @@ from Generate_Word_Report import generate_word_report, DOCX_AVAILABLE
 # ============================================================
 # Page Configuration
 # ============================================================
-st.set_page_config(
-    page_title="4G(LTE)/5G(NR) KPI Degradation Analyzer",
-    page_icon="📡",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+if not st.session_state.get("_hub_mode", False):
+    st.set_page_config(
+        page_title="4G(LTE)/5G(NR) KPI Degradation Analyzer",
+        page_icon="📡",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 # ============================================================
 # Global Styles
@@ -61,6 +62,32 @@ st.markdown("""
     --danger:      #FF4D4D;
     --bg-card:     rgba(255,255,255,0.04);
     --border:      rgba(0,194,255,0.18);
+    --bg-page:     #0A1628;
+}
+
+/* ── Global page background ── */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-page) !important;
+}
+
+/* ── Improve readability ── */
+.stMarkdown p, .stMarkdown li, .stMarkdown div {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #FFFFFF;
+}
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
+    color: #FFFFFF;
+}
+.stCaption {
+    font-size: 0.85rem !important;
+    color: #FFFFFF !important;
+}
+.stDataFrame {
+    font-size: 0.82rem !important;
+}
+[data-testid="stSidebar"] .stCaption {
+    font-size: 0.78rem !important;
 }
 
 /* ── Hero banner ── */
@@ -92,7 +119,7 @@ st.markdown("""
 }
 .kpi-hero .subtitle {
     font-size: 0.88rem;
-    color: rgba(255,255,255,0.55);
+    color: #FFFFFF;
     margin: 0;
     letter-spacing: 0.3px;
 }
@@ -151,7 +178,7 @@ st.markdown("""
     font-size: 0.73rem;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: rgba(255,255,255,0.5);
+    color: #FFFFFF;
     margin-bottom: 6px;
 }
 .metric-card .m-value {
@@ -199,12 +226,12 @@ st.markdown("""
 .empty-state {
     text-align: center;
     padding: 60px 20px;
-    color: rgba(255,255,255,0.4);
+    color: #FFFFFF;
 }
 .empty-state .es-icon { font-size: 3.5rem; margin-bottom: 14px; }
 .empty-state h3 {
     font-size: 1.1rem;
-    color: rgba(255,255,255,0.6);
+    color: #FFFFFF;
     margin-bottom: 8px;
 }
 .empty-state p {
@@ -212,6 +239,7 @@ st.markdown("""
     max-width: 380px;
     margin: 0 auto;
     line-height: 1.6;
+    color: #FFFFFF;
 }
 
 /* ── Sidebar polish ── */
@@ -246,7 +274,7 @@ st.markdown("""
 .sidebar-logo .logo-text {
     font-size: 0.82rem;
     font-weight: 700;
-    color: rgba(255,255,255,0.85);
+    color: #FFFFFF;
     line-height: 1.3;
     letter-spacing: 0.2px;
 }
@@ -255,7 +283,7 @@ st.markdown("""
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.2px;
-    color: rgba(255,255,255,0.35);
+    color: #FFFFFF;
     padding: 16px 0 6px;
     border-bottom: 1px solid rgba(255,255,255,0.06);
     margin-bottom: 10px;
@@ -292,22 +320,22 @@ st.markdown("""
 .callout.success {
     background: rgba(0,217,126,0.08);
     border-left: 3px solid var(--success);
-    color: rgba(255,255,255,0.8);
+    color: #FFFFFF;
 }
 .callout.info {
     background: rgba(0,194,255,0.07);
     border-left: 3px solid var(--accent);
-    color: rgba(255,255,255,0.75);
+    color: #FFFFFF;
 }
 .callout.warning {
     background: rgba(255,180,0,0.08);
     border-left: 3px solid var(--warning);
-    color: rgba(255,255,255,0.8);
+    color: #FFFFFF;
 }
 .callout.danger {
     background: rgba(255,77,77,0.08);
     border-left: 3px solid var(--danger);
-    color: rgba(255,255,255,0.8);
+    color: #FFFFFF;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -427,9 +455,9 @@ with st.sidebar:
 
     num_baseline_weeks = 4
     if baseline_mode == BASELINE_MODE_4WEEK_AVG:
-        num_baseline_weeks = st.slider(
+        num_baseline_weeks = st.number_input(
             "Lookback weeks",
-            min_value=1, max_value=12, value=4,
+            min_value=1, max_value=12, value=4, step=1,
             help="How many prior weeks to include in the Historical Weekday Median baseline",
         )
 

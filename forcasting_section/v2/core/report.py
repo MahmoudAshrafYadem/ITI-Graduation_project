@@ -95,9 +95,7 @@ def build_kpi_block(
         msg_str = "; ".join(a.message for a in alerts)
         lines.append(f"- Alerts: {status_str} — {msg_str}")
 
-    return "
-".join(lines) + "
-"
+    return "\n".join(lines) + "\n"
 
 
 def generate_cell_report(
@@ -143,8 +141,7 @@ def generate_cell_report(
             if a.status.value not in ("Normal", "Info"):
                 active_alert_lines.append(f"- {display_name}: {a.status.value} — {a.message}")
 
-    alert_summary = "
-".join(active_alert_lines) if active_alert_lines else "No active alerts flagged for this cell."
+    alert_summary = "\n".join(active_alert_lines) if active_alert_lines else "No active alerts flagged for this cell."
 
     seasonality_note = ""
     if context.seasonality:
@@ -174,5 +171,4 @@ Based on the KPI data above, please:
 Keep the response structured and actionable — this will be used for real network optimization decisions.
 """
 
-    return header + "
-".join(kpi_blocks) + footer
+    return header + "\n".join(kpi_blocks) + footer

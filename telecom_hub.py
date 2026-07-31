@@ -22,7 +22,7 @@ st.set_page_config(
 
 ROOT = Path(__file__).resolve().parent
 TOOLS = {
-    "4G(LTE)/5G(NR) KPI Degradation Analyzer": ROOT / "4G(LTE)/5G(NR)_RAN_KPI_Analysis_Tool" / "app" / "app_streamlit.py",
+    "4G(LTE)/5G(NR) KPI Degradation Analyzer": ROOT / "LTE_RAN_KPI_Analysis_Tool" / "app" / "app_streamlit.py",
     "4G(LTE)/5G(NR) KPI Forecaster":                       ROOT / "forcasting_section" / "v2" / "app.py",
     "Optimization Action Analyzer":             ROOT / "ActionAnalyzer_tool" / "app.py",
     "3GPP RAG Assistant":                       ROOT / "RAG_tool" / "app" / "ui.py",
@@ -35,7 +35,7 @@ TOOL_META = {
         "desc": "Detect, classify and localize KPI degradations across your RAN network with statistical significance testing.",
         "tags": ["LTE", "NR", "Degradation", "RCA", "Anomaly"],
     },
-    "LTE KPI Forecaster": {
+    "4G(LTE)/5G(NR) KPI Forecaster": {
         "icon": "📈",
         "color": "#00D97E",
         "desc": "Forecast future KPI trends using time-series models trained on historical RAN performance data.",

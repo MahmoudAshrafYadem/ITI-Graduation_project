@@ -9,11 +9,12 @@ from app import profiler
 from app.config import DEBUG_MODE, DATA_DIR
 
 # ── Page config ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="3GPP RAG Assistant",
-    page_icon="🤖",
-    layout="wide",
-)
+if not st.session_state.get("_hub_mode", False):
+    st.set_page_config(
+        page_title="3GPP RAG Assistant",
+        page_icon="🤖",
+        layout="wide",
+    )
 
 # ============================================================
 # Global Styles
@@ -32,6 +33,31 @@ st.markdown(
     --border:   rgba(0,194,255,0.18);
     --bg-main:  #0A1628;
     --bg-panel: #0D1E35;
+}
+
+/* ── Global page background ── */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-main) !important;
+}
+
+/* ── Improve readability ── */
+.stMarkdown p, .stMarkdown li, .stMarkdown div {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: rgba(255,255,255,0.85);
+}
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
+    color: #FFFFFF;
+}
+.stCaption {
+    font-size: 0.85rem !important;
+    color: rgba(255,255,255,0.65) !important;
+}
+.stDataFrame {
+    font-size: 0.82rem !important;
+}
+[data-testid="stSidebar"] .stCaption {
+    font-size: 0.78rem !important;
 }
 
 /* ── Hero banner ── */
