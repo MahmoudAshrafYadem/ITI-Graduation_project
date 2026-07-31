@@ -391,6 +391,47 @@ def _apply_chart_style_multi(fig, axes):
         _apply_chart_style(fig, ax)
 
 # ============================================================
+# Cached Data Helpers (avoid recomputation on widget reruns)
+# ============================================================
+@st.cache_data
+def _prepare_trend_data(_original_df, _trend_kpi, _deg_ids_tuple, _date_col, _site_col, _cell_col):
+    df_trend = _original_df.copy()
+    df_trend[_date_col] = pd.to_datetime(df_trend[_date_col], errors="coerce")
+    df_trend = df_trend.dropna(subset=[_date_col, _trend_kpi])
+    df_trend[_trend_kpi] = pd.to_numeric(df_trend[_trend_kpi], errors="coerce")
+    daily_before = df_trend.groupby(_date_col)[_trend_kpi].mean().reset_index()
+    deg_ids = set(_deg_ids_tuple)
+    if _site_col in df_trend.columns and _cell_col in df_trend.columns:
+        mask_deg = df_trend.set_index([_site_col, _cell_col]).index.isin(deg_ids)
+        df_clean_t = df_trend[~mask_deg]
+    else:
+        df_clean_t = df_trend
+    daily_after = (
+        df_clean_t.groupby(_date_col)[_trend_kpi].mean().reset_index()
+        if len(df_clean_t) > 0 else daily_before.copy()
+    )
+    return daily_before, daily_after
+
+@st.cache_data
+def _prepare_cell_data(_original_df, _site, _cell, _kpi, _date_col, _site_col, _cell_col):
+    cell_df = _original_df[
+        (_original_df[_site_col] == _site) &
+        (_original_df[_cell_col] == _cell) &
+        _original_df[_kpi].notna()
+    ].copy()
+    cell_df[_date_col] = pd.to_datetime(cell_df[_date_col], errors="coerce")
+    cell_df[_kpi] = pd.to_numeric(cell_df[_kpi], errors="coerce")
+    cell_df = cell_df.dropna(subset=[_date_col, _kpi]).sort_values(_date_col)
+    return cell_df
+
+@st.cache_data
+def _get_cell_list(_original_df, _site, _site_col, _cell_col):
+    return sorted(
+        _original_df.loc[_original_df[_site_col] == _site, _cell_col]
+        .dropna().unique().tolist()
+    )
+
+# ============================================================
 # Session State Initialization
 # ============================================================
 _STATE_KEYS = [
@@ -945,22 +986,9 @@ with tabs[2]:
                 ),
             )
 
-            df_trend = original_df.copy()
-            df_trend[DATE_COL] = pd.to_datetime(df_trend[DATE_COL], errors="coerce")
-            df_trend = df_trend.dropna(subset=[DATE_COL, trend_kpi])
-            df_trend[trend_kpi] = pd.to_numeric(df_trend[trend_kpi], errors="coerce")
-
-            daily_before = df_trend.groupby(DATE_COL)[trend_kpi].mean().reset_index()
-
-            if SITE_COL in df_trend.columns and CELL_COL in df_trend.columns:
-                mask_deg = df_trend.set_index([SITE_COL, CELL_COL]).index.isin(deg_ids)
-                df_clean_t = df_trend[~mask_deg]
-            else:
-                df_clean_t = df_trend
-
-            daily_after = (
-                df_clean_t.groupby(DATE_COL)[trend_kpi].mean().reset_index()
-                if len(df_clean_t) > 0 else daily_before.copy()
+            deg_ids_tuple = tuple(sorted(st.session_state.degraded_cell_ids))
+            daily_before, daily_after = _prepare_trend_data(
+                original_df, trend_kpi, deg_ids_tuple, DATE_COL, SITE_COL, CELL_COL
             )
 
             before_avg = daily_before[trend_kpi].mean()
@@ -1013,22 +1041,14 @@ with tabs[2]:
                     site_list = sorted(original_df[SITE_COL].dropna().unique().tolist())
                     sel_site = st.selectbox("Site", site_list, key="per_cell_site")
                 with dc3:
-                    cell_list = sorted(
-                        original_df.loc[original_df[SITE_COL] == sel_site, CELL_COL]
-                        .dropna().unique().tolist()
-                    )
+                    cell_list = _get_cell_list(original_df, sel_site, SITE_COL, CELL_COL)
                     if cell_list:
                         sel_cell = st.selectbox("Cell", cell_list, key="per_cell_cell")
 
                 if cell_list:
-                    cell_df = original_df[
-                        (original_df[SITE_COL] == sel_site) &
-                        (original_df[CELL_COL] == sel_cell) &
-                        original_df[cell_kpi].notna()
-                    ].copy()
-                    cell_df[DATE_COL] = pd.to_datetime(cell_df[DATE_COL], errors="coerce")
-                    cell_df[cell_kpi] = pd.to_numeric(cell_df[cell_kpi], errors="coerce")
-                    cell_df = cell_df.dropna(subset=[DATE_COL, cell_kpi]).sort_values(DATE_COL)
+                    cell_df = _prepare_cell_data(
+                        original_df, sel_site, sel_cell, cell_kpi, DATE_COL, SITE_COL, CELL_COL
+                    )
                     if not cell_df.empty:
                         fig2, ax2 = plt.subplots(figsize=(13, 4))
                         ax2.plot(cell_df[DATE_COL], cell_df[cell_kpi],
@@ -1113,6 +1133,18 @@ with tabs[3]:
                 mime="text/csv",
                 use_container_width=True,
             )
+
+            buf_anom = io.BytesIO()
+            with pd.ExcelWriter(buf_anom, engine="openpyxl") as writer:
+                adf.to_excel(writer, index=False, sheet_name="All_Anomalies")
+            buf_anom.seek(0)
+            st.download_button(
+                "⬇  Download Anomalies Excel",
+                data=buf_anom.getvalue(),
+                file_name="anomalies.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
     else:
         st.markdown("""
         <div class="empty-state">
@@ -1131,6 +1163,35 @@ with tabs[4]:
     summary_df = st.session_state.summary_df
 
     st.markdown('<div class="section-header"><div class="icon">📁</div><h3>Export Results</h3></div>', unsafe_allow_html=True)
+
+    st.markdown("##### 🔍 Anomalies Output")
+    if st.session_state.anomalies_df is not None and not st.session_state.anomalies_df.empty:
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            csv_anom = st.session_state.anomalies_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇  CSV — All Anomalies",
+                data=csv_anom,
+                file_name="all_anomalies.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        with ac2:
+            buf_anom = io.BytesIO()
+            with pd.ExcelWriter(buf_anom, engine="openpyxl") as writer:
+                st.session_state.anomalies_df.to_excel(writer, index=False, sheet_name="All_Anomalies")
+            buf_anom.seek(0)
+            st.download_button(
+                "⬇  Excel — All Anomalies",
+                data=buf_anom.getvalue(),
+                file_name="all_anomalies.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+    else:
+        st.caption("No anomalies detected. Use the sidebar button to detect anomalies.")
+
+    st.divider()
 
     ec1, ec2 = st.columns(2)
 
@@ -1188,47 +1249,18 @@ with tabs[4]:
 
     st.divider()
 
-    col_a, col_b = st.columns(2)
-
-    with col_a:
-        st.markdown("##### 🔍 All Anomalies")
-        if st.session_state.anomalies_df is not None and not st.session_state.anomalies_df.empty:
-            csv_anom = st.session_state.anomalies_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇  CSV — All Anomalies",
-                data=csv_anom,
-                file_name="all_anomalies.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-
-            buf_anom = io.BytesIO()
-            with pd.ExcelWriter(buf_anom, engine="openpyxl") as writer:
-                st.session_state.anomalies_df.to_excel(writer, index=False, sheet_name="All_Anomalies")
-            buf_anom.seek(0)
-            st.download_button(
-                "⬇  Excel — All Anomalies",
-                data=buf_anom.getvalue(),
-                file_name="all_anomalies.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
-        else:
-            st.caption("No anomalies detected.")
-
-    with col_b:
-        st.markdown("##### ✅ Clean Normal Cells")
-        if st.session_state.clean_cells_df is not None and not st.session_state.clean_cells_df.empty:
-            csv_clean = st.session_state.clean_cells_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇  CSV — Clean Normal Cells",
-                data=csv_clean,
-                file_name="clean_normal_cells.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-        else:
-            st.caption("Run analysis to generate clean cells export.")
+    st.markdown("##### ✅ Clean Normal Cells")
+    if st.session_state.clean_cells_df is not None and not st.session_state.clean_cells_df.empty:
+        csv_clean = st.session_state.clean_cells_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "⬇  CSV — Clean Normal Cells",
+            data=csv_clean,
+            file_name="clean_normal_cells.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    else:
+        st.caption("Run analysis to generate clean cells export.")
 
     st.divider()
 
