@@ -12,6 +12,7 @@ import io
 import os
 import sys
 import tempfile
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import streamlit as st
+
+warnings.filterwarnings("ignore", message=".*Matplotlib GUI.*", category=UserWarning)
 
 # Ensure the app directory is on sys.path for sibling imports
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +39,7 @@ from combined_degraded_kpi import analyze_all_kpis, get_clean_data_for_dashboard
 from Visualization_Functions import KPI_SHORT_NAMES, KPI_LIST
 from anomaly_detection import detect_kpi_anomalies_last_day
 from Generate_Word_Report import generate_word_report, DOCX_AVAILABLE
+from Save_Results import combine_not_calculated_cells, remove_anomaly_cells, date_first
 
 # ============================================================
 # Page Configuration
@@ -427,13 +431,18 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section">⚙️ Analysis Settings</div>', unsafe_allow_html=True)
 
+    kpi_options = list(KPI_CONFIGS.keys()) + ["--- Analyze All KPIs ---"]
     selected_kpi = st.selectbox(
         "KPI",
-        options=list(KPI_CONFIGS.keys()),
+        options=kpi_options,
         index=0,
         key="kpi_select",
     )
-    config = KPI_CONFIGS[selected_kpi]
+    analyze_all = selected_kpi == "--- Analyze All KPIs ---"
+    if analyze_all:
+        config = KPI_CONFIGS[kpi_options[0]]
+    else:
+        config = KPI_CONFIGS[selected_kpi]
 
     col_days, col_thr = st.columns(2)
     with col_days:
@@ -458,7 +467,7 @@ with st.sidebar:
 
     num_baseline_weeks = 4
     if baseline_mode == BASELINE_MODE_4WEEK_AVG:
-        num_baseline_weeks = st.slider(
+        num_baseline_weeks = st.number_input(
             "Lookback weeks",
             min_value=1, max_value=12, value=4,
             help="How many prior weeks to include in the Historical Weekday Median baseline",
@@ -467,16 +476,11 @@ with st.sidebar:
     st.divider()
 
     if uploaded_file:
-        run_single = st.button(
-            "▶  Run Selected KPI",
+        run_analysis = st.button(
+            "▶  Run Analysis",
             type="primary",
             use_container_width=True,
-            help=f"Analyze {selected_kpi} only",
-        )
-        run_all = st.button(
-            "▶  Analyze All KPIs",
-            use_container_width=True,
-            help="Run analysis for every configured KPI",
+            help="Run selected KPI or Analyze All KPIs",
         )
         run_anomalies = st.button(
             "🔍  Detect Anomalies",
@@ -484,7 +488,7 @@ with st.sidebar:
             help="Run statistical anomaly detection on the last day",
         )
     else:
-        run_single = run_all = run_anomalies = False
+        run_analysis = run_anomalies = False
         st.markdown(
             '<div class="callout info">⬆️ Upload an Excel file above to begin analysis.</div>',
             unsafe_allow_html=True,
@@ -514,91 +518,104 @@ st.markdown("""
 # Load Data & Run Analysis
 # ============================================================
 df = None
+progress_bar = st.progress(0, text="Ready")
+progress_text = st.empty()
 if uploaded_file:
     try:
         df = pd.read_excel(uploaded_file, sheet_name=sheet_name)
         st.session_state.original_df = df.copy()
+        progress_bar.progress(10, text="Data loaded")
+        progress_text.caption("Data loaded successfully")
 
         # Quick data overview row
         ov1, ov2, ov3, ov4, ov5 = st.columns(5)
         ov1.metric("Rows", f"{len(df):,}")
         ov2.metric("Columns", len(df.columns))
-        ov3.metric("KPI", selected_kpi[:20])
+        ov3.metric("KPI", "All KPIs" if analyze_all else selected_kpi[:20])
         ov4.metric("Threshold", f"{threshold:.1f}%")
         ov5.metric("Baseline Mode",
                    "Last Week" if baseline_mode == BASELINE_MODE_LAST_WEEK else "Hist. Median")
 
-        # ── Run Single KPI ──
-        if run_single:
-            with st.spinner(f"Analyzing {selected_kpi}…"):
-                output_df, metadata = analyze_selected_kpi(
-                    df=df,
-                    selected_kpi_name=selected_kpi,
-                    num_days=int(num_days),
-                    degradation_threshold=float(threshold),
-                    require_complete_days=require_complete_days,
-                    baseline_mode=baseline_mode,
-                    num_baseline_weeks=num_baseline_weeks,
-                    enable_significance_test=enable_significance_test,
-                    log_callback=lambda m: None,
-                )
-                st.session_state.output_df = output_df
-                st.session_state.analysis_mode = "single"
-                st.session_state.quarantine_df = metadata.get("quarantine_df")
-                st.session_state.incomplete_df = metadata.get("incomplete_df")
-                st.session_state.degraded_cell_ids = set()
-                if not output_df.empty and SITE_COL in output_df.columns and CELL_COL in output_df.columns:
-                    st.session_state.degraded_cell_ids = set(zip(output_df[SITE_COL], output_df[CELL_COL]))
-                if st.session_state.degraded_cell_ids and SITE_COL in df.columns and CELL_COL in df.columns:
-                    mask = df.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
-                    st.session_state.clean_cells_df = df[~mask].copy()
-                else:
-                    st.session_state.clean_cells_df = df.copy()
-                st.session_state.summary_df = None
-                st.session_state.all_outputs = {}
-                st.markdown(
-                    f'<div class="callout success">✅ Analysis complete — '
-                    f'<strong>{len(output_df)}</strong> degraded cells found &nbsp;|&nbsp; '
-                    f'Recent: {metadata.get("recent_start","?")} → {metadata.get("recent_end","?")} &nbsp;|&nbsp; '
-                    f'Baseline: {metadata.get("baseline_start","?")} → {metadata.get("baseline_end","?")}</div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ── Run All KPIs ──
-        if run_all:
-            with st.spinner("Analyzing all KPIs…"):
-                combined, outputs, summary_df, quarantine_df, incomplete_df = analyze_all_kpis(
-                    df=df,
-                    num_days=int(num_days),
-                    require_complete_days=require_complete_days,
-                    baseline_mode=baseline_mode,
-                    num_baseline_weeks=num_baseline_weeks,
-                    enable_significance_test=enable_significance_test,
-                    log_callback=lambda m: None,
-                )
-                st.session_state.output_df = combined
-                st.session_state.summary_df = summary_df
-                st.session_state.all_outputs = outputs
-                st.session_state.analysis_mode = "all"
-                st.session_state.quarantine_df = quarantine_df
-                st.session_state.incomplete_df = incomplete_df
-                st.session_state.degraded_cell_ids = set()
-                if not combined.empty and SITE_COL in combined.columns and CELL_COL in combined.columns:
-                    st.session_state.degraded_cell_ids = set(zip(combined[SITE_COL], combined[CELL_COL]))
-                if st.session_state.degraded_cell_ids and SITE_COL in df.columns and CELL_COL in df.columns:
-                    mask = df.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
-                    st.session_state.clean_cells_df = df[~mask].copy()
-                else:
-                    st.session_state.clean_cells_df = df.copy()
-                st.markdown(
-                    f'<div class="callout success">✅ Full analysis complete — '
-                    f'<strong>{len(combined)}</strong> total degraded cells across '
-                    f'<strong>{len(summary_df)}</strong> KPIs</div>',
-                    unsafe_allow_html=True,
-                )
+        # ── Run Analysis ──
+        if run_analysis:
+            if analyze_all:
+                progress_bar.progress(20, text="Analyzing all KPIs…")
+                progress_text.caption("Running multi-KPI degradation analysis...")
+                with st.spinner("Analyzing all KPIs…"):
+                    combined, outputs, summary_df, quarantine_df, incomplete_df = analyze_all_kpis(
+                        df=df,
+                        num_days=int(num_days),
+                        require_complete_days=require_complete_days,
+                        baseline_mode=baseline_mode,
+                        num_baseline_weeks=num_baseline_weeks,
+                        enable_significance_test=enable_significance_test,
+                        log_callback=lambda m: None,
+                    )
+                    st.session_state.output_df = combined
+                    st.session_state.summary_df = summary_df
+                    st.session_state.all_outputs = outputs
+                    st.session_state.analysis_mode = "all"
+                    st.session_state.quarantine_df = quarantine_df
+                    st.session_state.incomplete_df = incomplete_df
+                    st.session_state.degraded_cell_ids = set()
+                    if not combined.empty and SITE_COL in combined.columns and CELL_COL in combined.columns:
+                        st.session_state.degraded_cell_ids = set(zip(combined[SITE_COL], combined[CELL_COL]))
+                    if st.session_state.degraded_cell_ids and SITE_COL in df.columns and CELL_COL in df.columns:
+                        mask = df.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
+                        st.session_state.clean_cells_df = df[~mask].copy()
+                    else:
+                        st.session_state.clean_cells_df = df.copy()
+                    progress_bar.progress(70, text="Analysis complete")
+                    progress_text.caption("Multi-KPI analysis completed")
+                    st.markdown(
+                        f'<div class="callout success">✅ Full analysis complete — '
+                        f'<strong>{len(combined)}</strong> total degraded cells across '
+                        f'<strong>{len(summary_df)}</strong> KPIs</div>',
+                        unsafe_allow_html=True,
+                    )
+            else:
+                progress_bar.progress(20, text=f"Analyzing {selected_kpi}…")
+                progress_text.caption(f"Running degradation analysis for {selected_kpi}...")
+                with st.spinner(f"Analyzing {selected_kpi}…"):
+                    output_df, metadata = analyze_selected_kpi(
+                        df=df,
+                        selected_kpi_name=selected_kpi,
+                        num_days=int(num_days),
+                        degradation_threshold=float(threshold),
+                        require_complete_days=require_complete_days,
+                        baseline_mode=baseline_mode,
+                        num_baseline_weeks=num_baseline_weeks,
+                        enable_significance_test=enable_significance_test,
+                        log_callback=lambda m: None,
+                    )
+                    st.session_state.output_df = output_df
+                    st.session_state.analysis_mode = "single"
+                    st.session_state.quarantine_df = metadata.get("quarantine_df")
+                    st.session_state.incomplete_df = metadata.get("incomplete_df")
+                    st.session_state.degraded_cell_ids = set()
+                    if not output_df.empty and SITE_COL in output_df.columns and CELL_COL in output_df.columns:
+                        st.session_state.degraded_cell_ids = set(zip(output_df[SITE_COL], output_df[CELL_COL]))
+                    if st.session_state.degraded_cell_ids and SITE_COL in df.columns and CELL_COL in df.columns:
+                        mask = df.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
+                        st.session_state.clean_cells_df = df[~mask].copy()
+                    else:
+                        st.session_state.clean_cells_df = df.copy()
+                    st.session_state.summary_df = None
+                    st.session_state.all_outputs = {}
+                    progress_bar.progress(70, text="Analysis complete")
+                    progress_text.caption("Single KPI analysis completed")
+                    st.markdown(
+                        f'<div class="callout success">✅ Analysis complete — '
+                        f'<strong>{len(output_df)}</strong> degraded cells found &nbsp;|&nbsp; '
+                        f'Recent: {metadata.get("recent_start","?")} → {metadata.get("recent_end","?")} &nbsp;|&nbsp; '
+                        f'Baseline: {metadata.get("baseline_start","?")} → {metadata.get("baseline_end","?")}</div>',
+                        unsafe_allow_html=True,
+                    )
 
         # ── Detect Anomalies ──
         if run_anomalies:
+            progress_bar.progress(75, text="Detecting anomalies…")
+            progress_text.caption("Running anomaly detection on last day...")
             with st.spinner("Detecting anomalies…"):
                 anomalies_df = detect_kpi_anomalies_last_day(
                     df=df,
@@ -607,14 +624,26 @@ if uploaded_file:
                     log_callback=lambda m: None,
                 )
                 st.session_state.anomalies_df = anomalies_df
+                progress_bar.progress(90, text="Anomaly detection complete")
+                progress_text.caption("Anomaly detection completed")
+                callout_class = "success" if len(anomalies_df) == 0 else "warning"
+                callout_msg = "✅ No anomalies detected." if len(anomalies_df) == 0 else f"⚠️ {len(anomalies_df)} anomalies detected on the last day."
                 st.markdown(
-                    f'<div class="callout {"success" if len(anomalies_df)==0 else "warning"}">'
-                    f'{"✅ No anomalies detected." if len(anomalies_df)==0 else f"⚠️ {len(anomalies_df)} anomalies detected on the last day."}'
-                    f'</div>',
+                    f'<div class="callout {callout_class}">{callout_msg}</div>',
                     unsafe_allow_html=True,
                 )
 
+        if run_analysis or run_anomalies:
+            progress_bar.progress(100, text="Pipeline complete")
+            progress_text.caption("All pipeline stages completed successfully")
+            import time
+            time.sleep(0.5)
+            progress_bar.empty()
+            progress_text.empty()
+
     except Exception as e:
+        progress_bar.progress(0, text="Error occurred")
+        progress_text.caption(f"Error: {str(e)}")
         st.markdown(f'<div class="callout danger">❌ Error loading data: {e}</div>', unsafe_allow_html=True)
         import traceback
         with st.expander("Error details"):
@@ -655,7 +684,7 @@ if st.session_state.output_df is None or st.session_state.output_df.empty:
 # Results Tabs
 # ============================================================
 tabs = st.tabs([
-    "📋  Degraded Cells",
+    "📋  Summary",
     "📊  Dashboard",
     "📈  Trends",
     "🔍  Anomalies",
@@ -663,71 +692,77 @@ tabs = st.tabs([
 ])
 
 # ──────────────────────────────────────────────────────────────
-# TAB 1 — Degraded Cells
+# TAB 1 — Summary / Degraded Cells
 # ──────────────────────────────────────────────────────────────
 with tabs[0]:
-    output_df = st.session_state.output_df
+    if st.session_state.analysis_mode == "all" and st.session_state.summary_df is not None:
+        sum_df = st.session_state.summary_df
+        st.markdown('<div class="section-header"><div class="icon">📋</div><h3>KPI Summary</h3></div>', unsafe_allow_html=True)
+        _sum_display = [c for c in sum_df.columns if c != "error"]
+        st.dataframe(sum_df[_sum_display], use_container_width=True)
+    else:
+        output_df = st.session_state.output_df
 
-    st.markdown('<div class="section-header"><div class="icon">🎯</div><h3>Degraded Cell Results</h3></div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header"><div class="icon">🎯</div><h3>Degraded Cell Results</h3></div>', unsafe_allow_html=True)
 
-    # Filters row
-    ff1, ff2, ff3, ff4 = st.columns([2, 2, 2, 1])
-    with ff1:
-        site_filter = st.text_input("🔎 Site", key="site_filter", placeholder="Filter by site name…")
-    with ff2:
-        cell_filter = st.text_input("🔎 Cell", key="cell_filter", placeholder="Filter by cell ID…")
-    with ff3:
-        sev_options = ["All"]
-        if "rf_severity" in output_df.columns:
-            sev_options += sorted(output_df["rf_severity"].dropna().unique().tolist())
-        severity_filter = st.selectbox("Severity", sev_options, key="sev_filter")
-    with ff4:
-        show_deg_slider = st.checkbox("Deg. Range", value=False, key="show_deg_slider")
+        # Filters row
+        ff1, ff2, ff3, ff4 = st.columns([2, 2, 2, 1])
+        with ff1:
+            site_filter = st.text_input("🔎 Site", key="site_filter", placeholder="Filter by site name…")
+        with ff2:
+            cell_filter = st.text_input("🔎 Cell", key="cell_filter", placeholder="Filter by cell ID…")
+        with ff3:
+            sev_options = ["All"]
+            if "rf_severity" in output_df.columns:
+                sev_options += sorted(output_df["rf_severity"].dropna().unique().tolist())
+            severity_filter = st.selectbox("Severity", sev_options, key="sev_filter")
+        with ff4:
+            show_deg_slider = st.checkbox("Deg. Range", value=False, key="show_deg_slider")
 
-    deg_min, deg_max = 0.0, 100.0
-    if show_deg_slider and "kpi_degradation_ratio_%" in output_df.columns:
-        real_max = float(output_df["kpi_degradation_ratio_%"].max())
-        deg_min, deg_max = st.slider(
-            "Degradation Range (%)",
-            0.0, max(100.0, real_max),
-            (0.0, max(100.0, real_max)),
-            key="degradation_slider",
+        deg_min, deg_max = 0.0, 100.0
+        if show_deg_slider and "kpi_degradation_ratio_%" in output_df.columns:
+            real_max = float(output_df["kpi_degradation_ratio_%"].max())
+            deg_min, deg_max = st.slider(
+                "Degradation Range (%)",
+                0.0, max(100.0, real_max),
+                (0.0, max(100.0, real_max)),
+                key="degradation_slider",
+            )
+
+        # Apply filters
+        filtered_df = output_df.copy()
+        if site_filter and SITE_COL in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[SITE_COL].str.contains(site_filter, case=False, na=False)]
+        if cell_filter and CELL_COL in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df[CELL_COL].str.contains(cell_filter, case=False, na=False)]
+        if severity_filter != "All" and "rf_severity" in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df["rf_severity"] == severity_filter]
+        if show_deg_slider and "kpi_degradation_ratio_%" in filtered_df.columns:
+            filtered_df = filtered_df[
+                (filtered_df["kpi_degradation_ratio_%"] >= deg_min) &
+                (filtered_df["kpi_degradation_ratio_%"] <= deg_max)
+            ]
+
+        # Summary metrics
+        if len(filtered_df) > 0:
+            sm1, sm2, sm3, sm4 = st.columns(4)
+            sm1.metric("Degraded Cells", len(filtered_df))
+            if "kpi_degradation_ratio_%" in filtered_df.columns:
+                sm2.metric("Max Degradation", f"{filtered_df['kpi_degradation_ratio_%'].max():.2f}%")
+                sm3.metric("Avg Degradation", f"{filtered_df['kpi_degradation_ratio_%'].mean():.2f}%")
+            if "stat_significant" in filtered_df.columns:
+                sm4.metric("Statistically Significant", int(filtered_df["stat_significant"].sum()))
+
+        st.caption(f"Showing **{len(filtered_df)}** of **{len(output_df)}** degraded cells")
+
+        _hide = ["day_by_day_degradations", "baseline_fallback_used",
+                 "baseline_fallback_source", "baseline_fallback_value"]
+        display_cols = [c for c in filtered_df.columns if c not in _hide]
+        st.dataframe(
+            filtered_df[display_cols],
+            use_container_width=True,
+            height=430,
         )
-
-    # Apply filters
-    filtered_df = output_df.copy()
-    if site_filter and SITE_COL in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df[SITE_COL].str.contains(site_filter, case=False, na=False)]
-    if cell_filter and CELL_COL in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df[CELL_COL].str.contains(cell_filter, case=False, na=False)]
-    if severity_filter != "All" and "rf_severity" in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df["rf_severity"] == severity_filter]
-    if show_deg_slider and "kpi_degradation_ratio_%" in filtered_df.columns:
-        filtered_df = filtered_df[
-            (filtered_df["kpi_degradation_ratio_%"] >= deg_min) &
-            (filtered_df["kpi_degradation_ratio_%"] <= deg_max)
-        ]
-
-    # Summary metrics
-    if len(filtered_df) > 0:
-        sm1, sm2, sm3, sm4 = st.columns(4)
-        sm1.metric("Degraded Cells", len(filtered_df))
-        if "kpi_degradation_ratio_%" in filtered_df.columns:
-            sm2.metric("Max Degradation", f"{filtered_df['kpi_degradation_ratio_%'].max():.2f}%")
-            sm3.metric("Avg Degradation", f"{filtered_df['kpi_degradation_ratio_%'].mean():.2f}%")
-        if "stat_significant" in filtered_df.columns:
-            sm4.metric("Statistically Significant", int(filtered_df["stat_significant"].sum()))
-
-    st.caption(f"Showing **{len(filtered_df)}** of **{len(output_df)}** degraded cells")
-
-    _hide = ["day_by_day_degradations", "baseline_fallback_used",
-             "baseline_fallback_source", "baseline_fallback_value"]
-    display_cols = [c for c in filtered_df.columns if c not in _hide]
-    st.dataframe(
-        filtered_df[display_cols],
-        use_container_width=True,
-        height=430,
-    )
 
 # ──────────────────────────────────────────────────────────────
 # TAB 2 — Dashboard
@@ -775,7 +810,8 @@ with tabs[1]:
                               for v in cmap_vals]
                 ax.barh(labels, top10["kpi_degradation_ratio_%"],
                         color=bar_colors, edgecolor="none", height=0.65)
-                ax.set_title(f"Top 10 Degraded Cells — {selected_kpi}", fontweight="bold", fontsize=12, pad=10)
+                kpi_label = selected_kpi if not analyze_all else "All KPIs"
+                ax.set_title(f"Top 10 Degraded Cells — {kpi_label}", fontweight="bold", fontsize=12, pad=10)
                 ax.set_xlabel("Degradation (%)", fontsize=9)
                 ax.invert_yaxis()
                 _apply_chart_style(fig, ax)
@@ -851,43 +887,36 @@ with tabs[1]:
             st.pyplot(fig)
             plt.close(fig)
 
-    # KPI Summary Table (all-mode)
-    if st.session_state.analysis_mode == "all" and st.session_state.summary_df is not None:
-        st.markdown('<div class="section-header"><div class="icon">📋</div><h3>KPI Summary Table</h3></div>', unsafe_allow_html=True)
-        sum_df = st.session_state.summary_df
-        _sum_display = [c for c in sum_df.columns if c != "error"]
-        st.dataframe(sum_df[_sum_display], use_container_width=True)
-
     # Enhancement Potential row
     if (st.session_state.original_df is not None
             and len(st.session_state.degraded_cell_ids) > 0):
         st.markdown('<div class="section-header"><div class="icon">⚡</div><h3>Enhancement Potential (Last Day)</h3></div>', unsafe_allow_html=True)
-        kpis_to_show = (
-            list(st.session_state.summary_df["kpi_name"].head(4))
-            if st.session_state.analysis_mode == "all" and st.session_state.summary_df is not None
-            else [selected_kpi]
-        )
-        ep_cols = st.columns(min(4, len(kpis_to_show)))
-        for i, kn in enumerate(kpis_to_show[:4]):
-            cfg = KPI_CONFIGS.get(kn, {})
-            tkpi = cfg.get("target_kpi", "")
-            orig = st.session_state.original_df
-            if tkpi and tkpi in orig.columns and SITE_COL in orig.columns and CELL_COL in orig.columns:
-                try:
-                    df_ep = orig[[DATE_COL, SITE_COL, CELL_COL, tkpi]].copy()
-                    df_ep[DATE_COL] = pd.to_datetime(df_ep[DATE_COL], errors="coerce")
-                    df_ep[tkpi] = pd.to_numeric(df_ep[tkpi], errors="coerce")
-                    df_ep = df_ep.dropna(subset=[DATE_COL, tkpi])
-                    ld = df_ep[DATE_COL].max()
-                    last_d = df_ep[df_ep[DATE_COL] == ld]
-                    before = last_d[tkpi].mean()
-                    mask = last_d.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
-                    after = last_d[~mask][tkpi].mean() if (~mask).any() else before
-                    ep = ((after - before) / before * 100) if before != 0 else 0.0
-                    ep_cols[i].metric(kn, f"{ep:+.1f}%",
-                                      help="Projected improvement if degraded cells are resolved")
-                except Exception:
-                    pass
+        if st.session_state.analysis_mode == "all" and st.session_state.summary_df is not None:
+            kpis_to_show = list(st.session_state.summary_df["kpi_name"].head(4))
+        else:
+            kpis_to_show = [selected_kpi] if not analyze_all else []
+        if kpis_to_show:
+            ep_cols = st.columns(min(4, len(kpis_to_show)))
+            for i, kn in enumerate(kpis_to_show[:4]):
+                cfg = KPI_CONFIGS.get(kn, {})
+                tkpi = cfg.get("target_kpi", "")
+                orig = st.session_state.original_df
+                if tkpi and tkpi in orig.columns and SITE_COL in orig.columns and CELL_COL in orig.columns:
+                    try:
+                        df_ep = orig[[DATE_COL, SITE_COL, CELL_COL, tkpi]].copy()
+                        df_ep[DATE_COL] = pd.to_datetime(df_ep[DATE_COL], errors="coerce")
+                        df_ep[tkpi] = pd.to_numeric(df_ep[tkpi], errors="coerce")
+                        df_ep = df_ep.dropna(subset=[DATE_COL, tkpi])
+                        ld = df_ep[DATE_COL].max()
+                        last_d = df_ep[df_ep[DATE_COL] == ld]
+                        before = last_d[tkpi].mean()
+                        mask = last_d.set_index([SITE_COL, CELL_COL]).index.isin(st.session_state.degraded_cell_ids)
+                        after = last_d[~mask][tkpi].mean() if (~mask).any() else before
+                        ep = ((after - before) / before * 100) if before != 0 else 0.0
+                        ep_cols[i].metric(kn, f"{ep:+.1f}%",
+                                          help="Projected improvement if degraded cells are resolved")
+                    except Exception:
+                        pass
 
 # ──────────────────────────────────────────────────────────────
 # TAB 3 — Trends
@@ -1099,42 +1128,102 @@ with tabs[3]:
 # ──────────────────────────────────────────────────────────────
 with tabs[4]:
     output_df = st.session_state.output_df
+    summary_df = st.session_state.summary_df
 
     st.markdown('<div class="section-header"><div class="icon">📁</div><h3>Export Results</h3></div>', unsafe_allow_html=True)
 
     ec1, ec2 = st.columns(2)
 
     with ec1:
-        st.markdown("##### 📉 Degraded Cells")
-        csv_deg = output_df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "⬇  CSV — Degraded Cells",
-            data=csv_deg,
-            file_name=f"{selected_kpi.replace(' ', '_')}_degraded.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+        st.markdown("##### 📉 All Degraded Cells")
+        if output_df is not None and not output_df.empty:
+            csv_deg = output_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇  CSV — All Degraded Cells",
+                data=csv_deg,
+                file_name="all_degraded_cells.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
 
-        buf_deg = io.BytesIO()
-        with pd.ExcelWriter(buf_deg, engine="openpyxl") as writer:
-            output_df.to_excel(writer, index=False, sheet_name="Degraded_Cells")
-        buf_deg.seek(0)
-        st.download_button(
-            "⬇  Excel — Degraded Cells",
-            data=buf_deg.getvalue(),
-            file_name=f"{selected_kpi.replace(' ', '_')}_degraded.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+            buf_deg = io.BytesIO()
+            with pd.ExcelWriter(buf_deg, engine="openpyxl") as writer:
+                output_df.to_excel(writer, index=False, sheet_name="All_Degraded_Cells")
+            buf_deg.seek(0)
+            st.download_button(
+                "⬇  Excel — All Degraded Cells",
+                data=buf_deg.getvalue(),
+                file_name="all_degraded_cells.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.caption("No degraded cells to export.")
 
     with ec2:
-        st.markdown("##### ✅ Clean Cells")
+        st.markdown("##### 📊 KPI Summary")
+        if summary_df is not None and not summary_df.empty:
+            csv_sum = summary_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇  CSV — KPI Summary",
+                data=csv_sum,
+                file_name="kpi_summary.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+            buf_sum = io.BytesIO()
+            with pd.ExcelWriter(buf_sum, engine="openpyxl") as writer:
+                summary_df.to_excel(writer, index=False, sheet_name="KPI_Summary")
+            buf_sum.seek(0)
+            st.download_button(
+                "⬇  Excel — KPI Summary",
+                data=buf_sum.getvalue(),
+                file_name="kpi_summary.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.caption("Run Analyze All KPIs to generate summary.")
+
+    st.divider()
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown("##### 🔍 All Anomalies")
+        if st.session_state.anomalies_df is not None and not st.session_state.anomalies_df.empty:
+            csv_anom = st.session_state.anomalies_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "⬇  CSV — All Anomalies",
+                data=csv_anom,
+                file_name="all_anomalies.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+            buf_anom = io.BytesIO()
+            with pd.ExcelWriter(buf_anom, engine="openpyxl") as writer:
+                st.session_state.anomalies_df.to_excel(writer, index=False, sheet_name="All_Anomalies")
+            buf_anom.seek(0)
+            st.download_button(
+                "⬇  Excel — All Anomalies",
+                data=buf_anom.getvalue(),
+                file_name="all_anomalies.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        else:
+            st.caption("No anomalies detected.")
+
+    with col_b:
+        st.markdown("##### ✅ Clean Normal Cells")
         if st.session_state.clean_cells_df is not None and not st.session_state.clean_cells_df.empty:
             csv_clean = st.session_state.clean_cells_df.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
-                "⬇  CSV — Clean Cells",
+                "⬇  CSV — Clean Normal Cells",
                 data=csv_clean,
-                file_name="clean_cells.csv",
+                file_name="clean_normal_cells.csv",
                 mime="text/csv",
                 use_container_width=True,
             )
@@ -1143,27 +1232,46 @@ with tabs[4]:
 
     st.divider()
 
+    excluded_out = combine_not_calculated_cells(
+        st.session_state.quarantine_df, st.session_state.incomplete_df
+    )
+    if not excluded_out.empty:
+        st.markdown("##### ⚠️ Cells Not Calculated")
+        csv_excl = excluded_out.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "⬇  CSV — Cells Not Calculated",
+            data=csv_excl,
+            file_name="cells_not_calculated.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+        st.divider()
+
     st.markdown("##### 📊 Full Multi-Sheet Excel Report")
-    st.caption("Includes: Degraded Cells, KPI Summary, Clean Cells, Quarantine, Incomplete, Anomalies")
+    st.caption("Sheets: KPI Summary, All Degraded Cells, All Anomalies, Clean Normal Cells, Cells Not Calculated")
 
     buf_full = io.BytesIO()
     with pd.ExcelWriter(buf_full, engine="openpyxl") as writer:
-        output_df.to_excel(writer, index=False, sheet_name="Degraded_Cells")
-        if st.session_state.summary_df is not None and not st.session_state.summary_df.empty:
-            st.session_state.summary_df.to_excel(writer, index=False, sheet_name="KPI_Summary")
-        if st.session_state.clean_cells_df is not None and not st.session_state.clean_cells_df.empty:
-            st.session_state.clean_cells_df.to_excel(writer, index=False, sheet_name="Clean_Cells")
-        if st.session_state.quarantine_df is not None and not st.session_state.quarantine_df.empty:
-            st.session_state.quarantine_df.to_excel(writer, index=False, sheet_name="Quarantine")
-        if st.session_state.incomplete_df is not None and not st.session_state.incomplete_df.empty:
-            st.session_state.incomplete_df.to_excel(writer, index=False, sheet_name="Incomplete_Cells")
+        sheet_outputs = []
+        if summary_df is not None and not summary_df.empty:
+            sheet_outputs.append(("KPI_Summary", summary_df))
+        if output_df is not None and not output_df.empty:
+            sheet_outputs.append(("All_Degraded_Cells", output_df))
         if st.session_state.anomalies_df is not None and not st.session_state.anomalies_df.empty:
-            st.session_state.anomalies_df.to_excel(writer, index=False, sheet_name="Anomalies")
+            sheet_outputs.append(("All_Anomalies", st.session_state.anomalies_df))
+        clean_out = remove_anomaly_cells(st.session_state.clean_cells_df, st.session_state.anomalies_df)
+        if clean_out is not None and not clean_out.empty:
+            sheet_outputs.append(("Clean_Normal_Cells", clean_out))
+        if not excluded_out.empty:
+            sheet_outputs.append(("Cells_Not_Calculated", excluded_out))
+
+        for sheet_name, df in sheet_outputs:
+            date_first(df).to_excel(writer, sheet_name=sheet_name, index=False)
     buf_full.seek(0)
     st.download_button(
         "⬇  Download Full Excel Report",
         data=buf_full.getvalue(),
-        file_name=f"4G_5G_KPI_Analysis_{selected_kpi.replace(' ', '_')}.xlsx",
+        file_name=f"LTE_KPI_Analysis_{selected_kpi.replace(' ', '_') if not analyze_all else 'All_KPIs'}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
@@ -1178,10 +1286,10 @@ with tabs[4]:
                     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
                         tmp_path = tmp.name
                     success = generate_word_report(
-                        output_df,
-                        st.session_state.summary_df,
+                        output_df if output_df is not None else pd.DataFrame(),
+                        summary_df,
                         st.session_state.analysis_mode,
-                        selected_kpi,
+                        selected_kpi if not analyze_all else "All KPIs",
                         baseline_mode,
                         enable_significance_test,
                         tmp_path,
@@ -1196,7 +1304,7 @@ with tabs[4]:
                         st.download_button(
                             "⬇  Download Word Report",
                             data=docx_bytes,
-                            file_name=f"RF_Optimization_{selected_kpi.replace(' ', '_')}.docx",
+                            file_name=f"RF_Optimization_{selected_kpi.replace(' ', '_') if not analyze_all else 'All_KPIs'}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                             use_container_width=True,
                         )
