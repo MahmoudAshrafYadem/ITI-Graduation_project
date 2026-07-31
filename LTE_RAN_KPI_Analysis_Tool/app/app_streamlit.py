@@ -393,7 +393,6 @@ def _apply_chart_style_multi(fig, axes):
 # ============================================================
 # Cached Data Helpers (avoid recomputation on widget reruns)
 # ============================================================
-@st.cache_data
 def _prepare_trend_data(_original_df, _trend_kpi, _deg_ids_tuple, _date_col, _site_col, _cell_col):
     df_trend = _original_df.copy()
     df_trend[_date_col] = pd.to_datetime(df_trend[_date_col], errors="coerce")
@@ -412,7 +411,6 @@ def _prepare_trend_data(_original_df, _trend_kpi, _deg_ids_tuple, _date_col, _si
     )
     return daily_before, daily_after
 
-@st.cache_data
 def _prepare_cell_data(_original_df, _site, _cell, _kpi, _date_col, _site_col, _cell_col):
     cell_df = _original_df[
         (_original_df[_site_col] == _site) &
@@ -431,13 +429,38 @@ def _get_cell_list(_original_df, _site, _site_col, _cell_col):
         .dropna().unique().tolist()
     )
 
+def _build_trend_cache(_original_df, _date_col, _site_col, _cell_col, _kpi_cols):
+    df = _original_df.copy()
+    df[_date_col] = pd.to_datetime(df[_date_col], errors="coerce")
+    for col in _kpi_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna(subset=[_date_col])
+    if _site_col in df.columns and _cell_col in df.columns:
+        deg_mask = df.set_index([_site_col, _cell_col]).index.isin(st.session_state.degraded_cell_ids)
+        df_clean = df[~deg_mask]
+    else:
+        df_clean = df
+    result = {}
+    for col in _kpi_cols:
+        if col not in df.columns:
+            continue
+        sub = df[[_date_col, col]].dropna(subset=[col])
+        sub_clean = df_clean[[_date_col, col]].dropna(subset=[col]) if col in df_clean.columns else sub.copy()
+        if sub.empty:
+            continue
+        daily_before = sub.groupby(_date_col)[col].mean().reset_index()
+        daily_after = sub_clean.groupby(_date_col)[col].mean().reset_index() if not sub_clean.empty else daily_before.copy()
+        result[col] = (daily_before, daily_after)
+    return result
+
 # ============================================================
 # Session State Initialization
 # ============================================================
 _STATE_KEYS = [
     "output_df", "original_df", "summary_df", "analysis_mode",
     "quarantine_df", "incomplete_df", "anomalies_df", "degraded_cell_ids",
-    "all_outputs", "clean_cells_df",
+    "all_outputs", "clean_cells_df", "trend_cache",
 ]
 for _k in _STATE_KEYS:
     if _k not in st.session_state:
@@ -608,6 +631,9 @@ if uploaded_file:
                         st.session_state.clean_cells_df = df.copy()
                     progress_bar.progress(70, text="Analysis complete")
                     progress_text.caption("Multi-KPI analysis completed")
+                    st.session_state.trend_cache = _build_trend_cache(
+                        df, DATE_COL, SITE_COL, CELL_COL, [k["target_column"] for k in KPI_LIST]
+                    )
                     st.markdown(
                         f'<div class="callout success">✅ Full analysis complete — '
                         f'<strong>{len(combined)}</strong> total degraded cells across '
@@ -645,6 +671,9 @@ if uploaded_file:
                     st.session_state.all_outputs = {}
                     progress_bar.progress(70, text="Analysis complete")
                     progress_text.caption("Single KPI analysis completed")
+                    st.session_state.trend_cache = _build_trend_cache(
+                        df, DATE_COL, SITE_COL, CELL_COL, [k["target_column"] for k in KPI_LIST]
+                    )
                     st.markdown(
                         f'<div class="callout success">✅ Analysis complete — '
                         f'<strong>{len(output_df)}</strong> degraded cells found &nbsp;|&nbsp; '
@@ -986,10 +1015,15 @@ with tabs[2]:
                 ),
             )
 
-            deg_ids_tuple = tuple(sorted(st.session_state.degraded_cell_ids))
-            daily_before, daily_after = _prepare_trend_data(
-                original_df, trend_kpi, deg_ids_tuple, DATE_COL, SITE_COL, CELL_COL
-            )
+            trend_cache = st.session_state.get("trend_cache", {})
+            if trend_cache and trend_kpi in trend_cache:
+                daily_before, daily_after = trend_cache[trend_kpi]
+            else:
+                daily_before, daily_after = _prepare_trend_data(
+                    original_df, trend_kpi,
+                    tuple(sorted(st.session_state.degraded_cell_ids)),
+                    DATE_COL, SITE_COL, CELL_COL
+                )
 
             before_avg = daily_before[trend_kpi].mean()
             after_avg = daily_after[trend_kpi].mean()
