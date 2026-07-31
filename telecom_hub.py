@@ -333,7 +333,7 @@ tool_names = list(TOOLS.keys())
 with st.sidebar:
     st.markdown("""
     <div class="sidebar-brand">
-        <div class="sb-title">📡 Telecom Hub</div>
+        <div class="sb-title">📡 RANPilotAI</div>
         <div class="sb-sub">Network Optimization Toolkit</div>
     </div>
     """, unsafe_allow_html=True)
@@ -375,7 +375,7 @@ if not _loaded_tools:
     st.markdown("""
     <div class="hub-hero">
         <span class="hub-icon">📡</span>
-        <h1>Telecom Optimization Hub</h1>
+        <h1>5G/4G RAN Performance Optmization Assistant Tool</h1>
         <p class="tagline">
             An integrated suite of AI-powered tools for 4G/5G RAN performance
             monitoring, KPI forecasting, optimization analysis, and specification retrieval.

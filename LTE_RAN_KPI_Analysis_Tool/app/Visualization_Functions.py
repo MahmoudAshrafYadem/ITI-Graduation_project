@@ -5,14 +5,11 @@
 # Includes KPI lists for slicers and trend visualization helpers.
 # ============================================================
 
-import tkinter as tk
-from tkinter import ttk
 import numpy as np
 import pandas as pd
 
 import matplotlib
-matplotlib.use('TkAgg')
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+matplotlib.use("Agg")
 from matplotlib.figure import Figure
 
 from KPI_Configuration import (

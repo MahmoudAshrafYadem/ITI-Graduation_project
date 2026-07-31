@@ -12,7 +12,6 @@ import io
 import os
 import sys
 import tempfile
-import threading
 import time
 import warnings
 
@@ -394,42 +393,22 @@ def _apply_chart_style_multi(fig, axes):
 
 def _run_with_progress(target_fn, progress_bar, progress_text=None, label="Working"):
     """
-    Runs target_fn() in a background thread and animates progress_bar
-    continuously (ease-out toward 90%) until it finishes, then jumps to 100%.
-    target_fn must not call any st.* functions (it runs off the main thread).
+    Synchronous version — no background thread, so no tkinter/Tcl thread-safety risk.
     """
-    result_holder, error_holder, stage_holder = {}, {}, {"msg": ""}
+    import time
+    start = time.time()
+    progress_bar.progress(5, text=f"{label}… starting")
 
-    def _capture_stage(msg):
-        stage_holder["msg"] = msg
+    def _stage_cb(msg):
+        pass
 
-    def _worker():
-        try:
-            result_holder["value"] = target_fn(_capture_stage)
-        except Exception as e:
-            error_holder["error"] = e
-
-    thread = threading.Thread(target=_worker, daemon=True)
-    thread.start()
-
-    pct = 0
-    while thread.is_alive():
-        pct = min(pct + max(1, int((90 - pct) * 0.08)), 89)
-        txt = f"{label}… {pct}%"
-        progress_bar.progress(pct, text=txt)
-        if progress_text is not None:
-            progress_text.caption(stage_holder["msg"] or txt)
-        time.sleep(0.15)
-
-    thread.join()
-    if "error" in error_holder:
-        progress_bar.progress(0, text="Failed")
-        raise error_holder["error"]
+    result = target_fn(_stage_cb)
 
     progress_bar.progress(100, text=f"{label} — complete")
     if progress_text is not None:
-        progress_text.caption(f"{label} completed")
-    return result_holder.get("value")
+        elapsed = time.time() - start
+        progress_text.caption(f"{label} completed in {elapsed:.1f}s")
+    return result
 
 # ============================================================
 # Cached Data Helpers (avoid recomputation on widget reruns)
