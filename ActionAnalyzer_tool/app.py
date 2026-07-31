@@ -60,7 +60,7 @@ st.markdown(
 :root {
     --navy:  #0d1b2a; --panel: #132338; --border: #1e3a5f;
     --cyan:  #00c8ff; --green: #00e599; --red:   #ff4d6d;
-    --amber: #ffb347; --muted: #6b8cae; --text:  #dce8f0;
+    --amber: #ffb347; --muted: #ffffff; --text:  #ffffff;
 }
 html, body, [data-testid="stAppViewContainer"] {
     background: var(--navy); color: var(--text);
@@ -118,6 +118,38 @@ label {
     letter-spacing: .08em; text-transform: uppercase;
 }
 #MainMenu, footer { visibility: hidden; }
+
+    /* ── Global white text & readable sizes ── */
+    .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown div, .stMarkdown span,
+    .stCaption, label, .stRadio, .stSelectbox, .stSlider, .stCheckbox,
+    .stChatMessage, .stChatMessage p, .stChatMessage div {
+        color: #ffffff !important;
+    }
+    .stDataFrame, .stDataFrame table, .stDataFrame td, .stDataFrame th {
+        color: #ffffff !important;
+        font-size: 0.9rem !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] .stMarkdown div,
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stRadio,
+    [data-testid="stSidebar"] .stSelectbox,
+    [data-testid="stSidebar"] .stSlider,
+    [data-testid="stSidebar"] .stCheckbox,
+    [data-testid="stSidebar"] .stChatMessage,
+    [data-testid="stSidebar"] .stChatMessage p,
+    [data-testid="stSidebar"] .stChatMessage div {
+        color: #ffffff !important;
+        font-size: 0.88rem !important;
+    }
+    .stChatMessage, .stChatMessage p, .stChatMessage div {
+        font-size: 0.95rem !important;
+    }
+    .section-header { font-size: .85rem !important; }
+    .metric-tile .label { font-size: .78rem !important; }
+    .alert-warn, .alert-info { font-size: .9rem !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -783,8 +815,8 @@ def main():
 
     # ── Footer ────────────────────────────────────────────────────────
     st.markdown(
-        "<div style='text-align:center;padding:32px 0 8px;font-size:.65rem;"
-        "letter-spacing:.12em;color:#1e3a5f;text-transform:uppercase'>"
+        "<div style='text-align:center;padding:32px 0 8px;font-size:.8rem;"
+        "letter-spacing:.12em;color:#ffffff;text-transform:uppercase'>"
         "NetOps Impact Analyzer v2  ·  Dolt Version-Controlled Database</div>",
         unsafe_allow_html=True,
     )

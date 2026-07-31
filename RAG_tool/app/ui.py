@@ -281,12 +281,41 @@ st.markdown(
     align-items: center;
     gap: 8px;
 }
-.stage-bar .dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--accent);
-    flex-shrink: 0;
-}
+    .stage-bar .dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: var(--accent);
+        flex-shrink: 0;
+    }
+
+    /* ── Global white text & readable sizes ── */
+    .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown div, .stMarkdown span,
+    .stCaption, label, .stRadio, .stSelectbox, .stSlider, .stCheckbox,
+    .stChatMessage, .stChatMessage p, .stChatMessage div {
+        color: #ffffff !important;
+    }
+    .stDataFrame, .stDataFrame table, .stDataFrame td, .stDataFrame th {
+        color: #ffffff !important;
+        font-size: 0.9rem !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] .stMarkdown div,
+    [data-testid="stSidebar"] .stCaption,
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] .stRadio,
+    [data-testid="stSidebar"] .stSelectbox,
+    [data-testid="stSidebar"] .stSlider,
+    [data-testid="stSidebar"] .stCheckbox,
+    [data-testid="stSidebar"] .stChatMessage,
+    [data-testid="stSidebar"] .stChatMessage p,
+    [data-testid="stSidebar"] .stChatMessage div {
+        color: #ffffff !important;
+        font-size: 0.88rem !important;
+    }
+    .stChatMessage, .stChatMessage p, .stChatMessage div {
+        font-size: 0.95rem !important;
+    }
 </style>
 """,
     unsafe_allow_html=True,

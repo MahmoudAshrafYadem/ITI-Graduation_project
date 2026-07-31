@@ -12,6 +12,58 @@ from statsmodels.tsa.seasonal import STL
 
 st.set_page_config(page_title="LTE KPI Forecaster", layout="wide")
 
+st.markdown("""
+<style>
+:root {
+    --accent: #00C2FF;
+    --accent2: #7B61FF;
+    --success: #00D97E;
+    --warning: #FFB400;
+    --bg-main: #0A1628;
+    --bg-panel: #0D1E35;
+}
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-main) !important;
+}
+
+/* ── Global white text & readable sizes ── */
+.stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown div, .stMarkdown span,
+.stCaption, label, .stRadio, .stSelectbox, .stSlider, .stCheckbox,
+.stChatMessage, .stChatMessage p, .stChatMessage div {
+    color: #ffffff !important;
+}
+.stDataFrame, .stDataFrame table, .stDataFrame td, .stDataFrame th {
+    color: #ffffff !important;
+    font-size: 0.9rem !important;
+}
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] .stMarkdown p,
+[data-testid="stSidebar"] .stMarkdown div,
+[data-testid="stSidebar"] .stCaption,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] .stRadio,
+[data-testid="stSidebar"] .stSelectbox,
+[data-testid="stSidebar"] .stSlider,
+[data-testid="stSidebar"] .stCheckbox,
+[data-testid="stSidebar"] .stChatMessage,
+[data-testid="stSidebar"] .stChatMessage p,
+[data-testid="stSidebar"] .stChatMessage div {
+    color: #ffffff !important;
+    font-size: 0.88rem !important;
+}
+.stChatMessage, .stChatMessage p, .stChatMessage div {
+    font-size: 0.95rem !important;
+}
+[data-testid="stSidebar"] {
+    background: #0A1628 !important;
+}
+[data-testid="stSidebar"] .stButton > button {
+    border-radius: 8px;
+    font-weight: 600;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📡 LTE Cell KPI Forecaster")
 st.markdown("Upload your cleaned LTE data, select a cell and KPI, choose a forecast model, and get a forecast.")
 
