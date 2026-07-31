@@ -423,8 +423,14 @@ else:
 # Load & Run Selected Tool
 # ============================================================
 tool_path = TOOLS[selected_tool]
+_prev_tool = st.session_state.get("_active_tool")
+
 try:
-    with _tool_environment(tool_path):
+    if _prev_tool != selected_tool:
+        with _tool_environment(tool_path):
+            runpy.run_path(str(tool_path), run_name="__main__")
+        st.session_state["_active_tool"] = selected_tool
+    else:
         runpy.run_path(str(tool_path), run_name="__main__")
     loaded = st.session_state.get("_loaded_tools", set())
     loaded.add(selected_tool)
