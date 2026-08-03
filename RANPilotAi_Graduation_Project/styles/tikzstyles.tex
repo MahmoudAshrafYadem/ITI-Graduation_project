@@ -1,0 +1,137 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TikZ Libraries
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\usetikzlibrary{
+arrows.meta,
+positioning,
+calc,
+fit,
+backgrounds,
+matrix,
+shadows,
+shapes.geometric,
+shapes.multipart,
+shapes.symbols
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Global TikZ Settings
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tikzset{
+
+>={Latex[length=3mm,width=2mm]},
+
+line/.style={
+thick
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Main Platform
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+hub/.style={
+rectangle,
+rounded corners=5pt,
+draw=black,
+very thick,
+fill=cyan!20,
+minimum width=4.8cm,
+minimum height=1.2cm,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Modules
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+module/.style={
+rectangle,
+rounded corners=4pt,
+draw=black,
+thick,
+fill=blue!10,
+minimum width=3.8cm,
+minimum height=1cm,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Services
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+service/.style={
+rectangle,
+rounded corners=4pt,
+draw=black,
+thick,
+fill=green!15,
+minimum width=12cm,
+minimum height=1cm,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Layers
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+layer/.style={
+rectangle,
+rounded corners=5pt,
+draw=black,
+very thick,
+minimum width=12cm,
+minimum height=1cm,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Database
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+database/.style={
+cylinder,
+draw,
+shape border rotate=90,
+aspect=0.3,
+minimum height=1.3cm,
+minimum width=1.5cm,
+fill=orange!20,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Process
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+process/.style={
+rectangle,
+rounded corners,
+draw,
+fill=yellow!20,
+minimum width=3.2cm,
+minimum height=.9cm,
+align=center,
+drop shadow
+},
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Decision
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+decision/.style={
+diamond,
+aspect=2,
+draw,
+fill=red!15,
+align=center,
+drop shadow
+}
+
+}

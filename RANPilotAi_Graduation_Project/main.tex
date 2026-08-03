@@ -1,0 +1,62 @@
+\documentclass[12pt,a4paper]{report}
+
+% ===============================
+% Packages
+% ===============================
+\input{styles/packages}
+\input{styles/tikzstyles}
+\input{styles/commands}
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Front Matter
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\pagenumbering{roman}
+
+\input{frontmatter/titlepage}
+\input{frontmatter/abstract}
+\input{frontmatter/dedication}
+\input{frontmatter/acknowledgements}
+
+\tableofcontents
+\listoffigures
+\listoftables
+
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Main Matter
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\pagenumbering{arabic}
+
+\include{chapters/chapter01_introduction}
+\include{chapters/chapter02_literature_review}
+\include{chapters/chapter03_system_design}
+\include{chapters/chapter04_kpi_degradation_analyzer}
+\include{chapters/chapter05_kpi_forecasting}
+\include{chapters/chapter06_action_analyzer}
+\include{chapters/chapter07_telecom_rag_assistant}
+\include{chapters/chapter08_system_integration}
+\include{chapters/chapter09_experimental_results}
+\include{chapters/chapter10_conclusion}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% References
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Appendix
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendix
+
+\include{appendices/appendixA}
+\include{appendices/appendixB}
+
+\end{document}
