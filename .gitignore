@@ -67,3 +67,16 @@ OUTPUT/
 *.pkl
 *.pickle
 *.onnx
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.pdf
+*.toc
+*.log
+*.pid
+*.lock
