@@ -1,37 +1,121 @@
 \begin{titlepage}
+\newgeometry{margin=0pt}
 
-\centering
+% Define cover colours locally
+\definecolor{itiRed}{RGB}{180,20,20}
+\definecolor{itiDark}{RGB}{20,20,45}
 
-\vspace*{2cm}
+\begin{tikzpicture}[remember picture, overlay,
+                    shift={(current page.south west)}]
 
-{\Huge\bfseries RANPilotAI}
+  %----------------------------------------------------------
+  % White full-page background
+  %----------------------------------------------------------
+  \fill[white] (0,0) rectangle (210mm,297mm);
 
-\vspace{1cm}
+  %----------------------------------------------------------
+  % Top red header bar (top 58 mm of page)
+  %----------------------------------------------------------
+  \fill[itiRed] (0,239mm) rectangle (210mm,297mm);
 
-{\Large AI-Powered RAN Performance Optimization Assistant}
+  %----------------------------------------------------------
+  % Thin dark separator line below header
+  %----------------------------------------------------------
+  \fill[itiDark] (0,237mm) rectangle (210mm,239mm);
 
-\vspace{2cm}
+  %----------------------------------------------------------
+  % Bottom dark footer bar (bottom 22 mm of page)
+  %----------------------------------------------------------
+  \fill[itiDark] (0,0) rectangle (210mm,22mm);
 
-Graduation Project
+  %----------------------------------------------------------
+  % Thin red accent line above footer
+  %----------------------------------------------------------
+  \fill[itiRed] (0,22mm) rectangle (210mm,23.5mm);
 
-\vspace{1cm}
+  %----------------------------------------------------------
+  % ITI Logo – centred inside header
+  %----------------------------------------------------------
+  \node at (105mm, 268mm)
+    {\includegraphics[height=40mm]{figures/iti_logo.png}};
 
-Information Technology Institute (ITI)
+  %----------------------------------------------------------
+  % Institution name (white, below logo, still in header)
+  %----------------------------------------------------------
+  \node[white, font=\large\bfseries] at (105mm,243mm)
+    {Information Technology Institute \ (ITI)};
 
-\vfill
+  %----------------------------------------------------------
+  % Decorative horizontal rule in white body
+  %----------------------------------------------------------
+  \draw[itiRed, line width=1.2pt] (20mm,230mm) -- (190mm,230mm);
 
-Team Members
+  %----------------------------------------------------------
+  % Main project title
+  %----------------------------------------------------------
+  \node[itiDark, font=\fontsize{52}{60}\selectfont\bfseries]
+    at (105mm,205mm) {RANPilotAI};
 
-\begin{itemize}
-\item Mahmoud Ashraf 
-\item Ibrahim Samy
-\item Khalid Mogahed
-\item Tasneem Amein
-\item Mohab Tarek
-\end{itemize}
+  %----------------------------------------------------------
+  % Subtitle
+  %----------------------------------------------------------
+  \node[itiRed, font=\large\bfseries, align=center]
+    at (105mm,190mm)
+    {AI-Powered RAN Performance\\[2pt]Optimization Assistant };
 
-\vfill
+  %----------------------------------------------------------
+  % Graduation tag
+  %----------------------------------------------------------
+  \draw[gray!40, line width=0.5pt] (50mm,179mm) -- (160mm,179mm);
+  \node[gray, font=\normalsize\itshape] at (105mm,175mm)
+    {Graduation Project \textbullet{} 2026};
+  \draw[gray!40, line width=0.5pt] (50mm,171mm) -- (160mm,171mm);
 
-2026
+  %----------------------------------------------------------
+  % Team members section
+  %----------------------------------------------------------
+  \node[itiDark, font=\normalsize\bfseries\scshape]
+    at (105mm,160mm) {Development Team};
 
+  \node[itiDark, font=\normalsize, align=center] at (105mm,151mm)
+    {Mahmoud Ashraf \enspace\textbullet\enspace
+     Ibrahim Samy \enspace\textbullet\enspace
+     Khaled Mogahed};
+
+  \node[itiDark, font=\normalsize, align=center] at (105mm,143mm)
+    {Tasneem Amein \enspace\textbullet\enspace Mohab Tarek};
+
+  %----------------------------------------------------------
+  % Supervisor
+  %----------------------------------------------------------
+  \draw[itiRed!35, line width=0.4pt] (55mm,135mm) -- (155mm,135mm);
+
+  \node[itiDark, font=\normalsize, align=center] at (105mm,127mm)
+    {Track Supervisor\\[3pt]\textbf{Dr.\ Salma Sobhy}};
+
+  \draw[itiRed!35, line width=0.4pt] (55mm,119mm) -- (155mm,119mm);
+
+  %----------------------------------------------------------
+  % Sponsor section — Etisalat
+  %----------------------------------------------------------
+  \node[gray!70, font=\small\itshape] at (105mm,108mm)
+    {In Collaboration with};
+
+  % Two logos side by side: ITI badge (text) and Etisalat logo
+  \node at (105mm,82mm)
+    {\includegraphics[height=30mm]{figures/etisalat_logo.pdf}};
+
+  \draw[gray!30, line width=0.4pt] (30mm,57mm) -- (180mm,57mm);
+
+  %----------------------------------------------------------
+  % Footer text (white on dark bar)
+  %----------------------------------------------------------
+  \node[white, font=\normalsize\bfseries] at (105mm,11mm)
+    {Intake 46 \enspace\textbullet\enspace
+     Ismailia Branch \enspace\textbullet\enspace
+     Telco-Cloud Track};
+
+\end{tikzpicture}
+
+\restoregeometry
 \end{titlepage}

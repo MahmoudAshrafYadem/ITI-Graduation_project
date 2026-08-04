@@ -164,7 +164,7 @@ Each analytical module executes independently while sharing common services such
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Integration Objectives}
 
-The integration strategy adopted in the development of the RANPilotAI platform was guided by several software engineering objectives intended to improve the usability, maintainability, scalability, and extensibility of the system. Rather than focusing solely on integrating multiple analytical tools into a single application, the objective was to establish a modular software architecture capable of supporting future enhancements while maintaining a consistent engineering workflow.
+The integration strategy adopted in the development of the RANPilotAI platform was guided by several software engineering objectives intended to improve the usability, maintainability, scalability, and extensibility of the system. Rather than focusing solely on integrating multiple analytical tools into a single application, the objective was to establish a modular software architecture capable of supporting future enhancements while maintaining a consistent engineering workflow \cite{bass2021}.
 
 The first objective was to provide a unified engineering environment that consolidates the complete RAN optimization workflow into a single platform. Instead of requiring engineers to execute separate applications for KPI analysis, forecasting, optimization planning, and standards consultation, all functionalities are accessible through the Telecom Hub.
 
@@ -320,7 +320,7 @@ The layered architecture shown in Figure~\ref{fig:software_architecture} separat
 
 The Engineering Layer contains the four intelligent modules developed throughout this project. Each module executes independently while relying on the common services provided by the Application Layer. This separation ensures that modifications to one analytical component do not affect the remaining modules.
 
-Finally, the Data Layer provides persistent storage and external resources required by the engineering modules. Structured datasets are maintained in CSV files, version-controlled engineering data are stored using Dolt, semantic document embeddings are managed by the Qdrant vector database, and the official 3GPP Technical Specifications are maintained within the PDF repository. This organization establishes a clear separation between data management and analytical processing while simplifying future maintenance and platform expansion.
+Finally, the Data Layer provides persistent storage and external resources required by the engineering modules. Structured datasets are maintained in CSV files, version-controlled engineering data are stored using Dolt, semantic document embeddings are managed by the Qdrant vector database, and the official 3GPP Technical Specifications are maintained within the PDF repository. This organization establishes a clear separation between data management and analytical processing while simplifying future maintenance and platform expansion \cite{jurafsky2023}.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Module Integration}
 
@@ -854,7 +854,7 @@ The workflow begins when the user launches the platform and selects one of the a
 
 The RANPilotAI platform was designed as a lightweight web-based application that can be deployed on a single workstation without requiring a distributed computing infrastructure. The deployment strategy prioritizes simplicity, portability, and ease of installation while providing sufficient computational resources for the analytical tasks implemented throughout the platform.
 
-The Streamlit framework serves as the presentation layer of the application, providing an interactive graphical user interface through which users access the different engineering modules. Since Streamlit executes as a local web application, users can interact with the platform through a standard web browser without installing additional client software.
+The Streamlit framework serves as the presentation layer of the application, providing an interactive graphical user interface through which users access the different engineering modules. Since Streamlit executes as a local web application, users can interact with the platform through a standard web browser without installing additional client software \cite{pressman2014}.
 
 All engineering modules execute within the same Python runtime environment. This unified execution model simplifies dependency management, facilitates communication between modules, and enables the reuse of common software components. Furthermore, executing the analytical modules locally reduces network latency and allows the platform to remain operational even in environments with limited Internet connectivity.
 

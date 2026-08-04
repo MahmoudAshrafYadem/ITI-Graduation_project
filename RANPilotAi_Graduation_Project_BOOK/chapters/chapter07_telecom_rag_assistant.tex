@@ -67,8 +67,7 @@ The Telecom RAG Assistant integrates several modern Artificial Intelligence and 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Large Language Models (LLMs)}
 
-Large Language Models (LLMs) are deep neural networks trained on massive textual datasets to predict the next token in a sequence. Modern LLMs are primarily based on the Transformer architecture, which employs self-attention mechanisms to capture long-range dependencies between words and sentences.
-
+Large Language Models (LLMs) are deep neural networks trained on massive textual datasets to predict the next token in a sequence \cite{goodfellow2016}.
 Recent models such as GPT, LLaMA, Claude, Gemini, and DeepSeek have demonstrated remarkable capabilities in natural language understanding, reasoning, summarization, translation, and conversational question answering. These capabilities enable users to interact with complex technical information using natural language instead of predefined commands or structured queries.
 
 Despite their impressive performance, LLMs suffer from several limitations when applied to engineering applications. Since their knowledge is acquired during training, newly published standards or updated technical documents cannot be accessed unless the model is retrained. Furthermore, the generated responses may contain hallucinations, where the model produces fluent but factually incorrect information. In standards-based domains such as telecommunications, such inaccuracies may lead to incorrect engineering decisions.
@@ -78,7 +77,7 @@ Consequently, rather than relying exclusively on an LLM, the proposed system aug
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Retrieval-Augmented Generation (RAG)}
 
-Retrieval-Augmented Generation (RAG) is a hybrid Artificial Intelligence framework that combines document retrieval with neural language generation. Instead of generating responses solely from the model's internal knowledge, a RAG system first retrieves the most relevant documents from an external knowledge base and then incorporates these documents into the prompt supplied to the language model.
+Retrieval-Augmented Generation (RAG) is a hybrid Artificial Intelligence framework that combines document retrieval with neural language generation. Instead of generating responses solely from the model's internal knowledge, a RAG system first retrieves the most relevant documents from an external knowledge base and then incorporates these documents into the prompt supplied to the language model \cite{jurafsky2023}.
 
 The general RAG workflow consists of four sequential stages:
 
@@ -115,7 +114,7 @@ The Telecom RAG Assistant employs a transformer-based embedding model to encode 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \subsection{Vector Databases}
 
-After generating dense embeddings for every document chunk, an efficient mechanism is required to store and retrieve these vectors. Traditional relational databases are not designed for similarity search in high-dimensional vector spaces. Instead, specialized vector databases perform Approximate Nearest Neighbor (ANN) search to efficiently retrieve semantically similar vectors.
+After generating dense embeddings for every document chunk, an efficient mechanism is required to store and retrieve these vectors. Traditional relational databases are not designed for similarity search in high-dimensional vector spaces. Instead, specialized vector databases perform Approximate Nearest Neighbor (ANN) search to efficiently retrieve semantically similar vectors \cite{manning2008}.
 
 The proposed system utilizes Qdrant as the vector database responsible for storing all embedded document chunks together with their associated metadata. Besides the dense embeddings, each indexed record contains additional information including:
 

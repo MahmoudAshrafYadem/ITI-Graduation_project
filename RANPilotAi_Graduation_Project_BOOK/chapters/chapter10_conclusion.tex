@@ -1,3 +1,85 @@
-\chapter{Conclusion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Conclusion and Future Work}
+\label{chap:conclusion}
 
-Write the conclusion here.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusion}
+
+This graduation project presented \textbf{RANPilotAI}, an integrated, AI-powered platform designed to automate and augment the daily workflows of Radio Frequency optimization engineers working in 4G LTE and 5G New Radio mobile networks. The platform addresses a fundamental gap in existing tooling: the absence of a unified, intelligent environment capable of covering the complete RAN optimization cycle — from performance degradation detection and trend forecasting, through configuration change impact assessment, to authoritative standards consultation.
+
+The work delivered four specialized analytical modules, all integrated into a single web-based engineering environment called the \textbf{Telecom Hub}.
+
+\subsection*{KPI Degradation Analyzer}
+
+The KPI Degradation Analyzer demonstrated that statistically rigorous automated detection of network performance degradation is achievable across a broad set of KPI categories without requiring manual threshold tuning or domain-specific scripting for each indicator. The three-layer pipeline — combining Welch's t-test for statistical confidence scoring, RF-aware root cause inference with configurable severity weighting, and a data quality framework supporting sentinel-value filtering, unit-aware validation, and same-weekday baseline imputation — produced consistent and interpretable degradation reports across 13 KPI families including throughput, accessibility, retainability, mobility, availability, VoLTE, CSFB, and RRC re-establishment. Engineers can upload operator performance data and receive a structured root-cause summary within seconds, replacing a workflow that previously required significant manual effort.
+
+\subsection*{KPI Forecasting Engine}
+
+The KPI Forecasting Engine demonstrated that combining multiple complementary forecasting models within a single interactive interface provides engineers with both predictive power and interpretability. The XGBoost model, built with leakage-safe cross-KPI feature engineering, captures non-linear relationships and inter-KPI dependencies that classical time-series methods cannot exploit. The Holt-Winters exponential smoothing model provides a transparent seasonal decomposition baseline whose assumptions are easier to audit in operational settings. Together with STL-based seasonality analysis, backtesting metrics (MAE, RMSE, MAPE), recursive 7-day forward forecasts, and residual diagnostics, the engine enables engineers to anticipate network degradation before it manifests operationally, shifting the optimization workflow from reactive troubleshooting toward proactive planning.
+
+\subsection*{Optimization Action Analyzer}
+
+The Optimization Action Analyzer addressed a long-standing challenge in RF optimization practice: the difficulty of establishing a causal connection between specific configuration changes and observed KPI impacts. By integrating Dolt, a version-controlled SQL database, the module provides a reproducible and auditable record of RF configuration history. Grouping same-day commits into unified action hunks, aligning configuration events with KPI time windows using weekday-matched baselines, and presenting results through interactive before/after overlay charts, delta bar plots, timeline views, and summary impact tables gave engineers a reliable, visual mechanism for attributing performance changes to individual optimization actions. This traceability significantly improves the quality of engineering decisions and supports knowledge transfer across operations teams.
+
+\subsection*{Telecom RAG Assistant}
+
+The Telecom RAG Assistant demonstrated that Retrieval-Augmented Generation can be applied effectively to highly technical, standards-based engineering domains. The pipeline — comprising section-aware PDF chunking, BGE-large dense embeddings, local Qdrant vector search, cross-encoder re-ranking, and a strict anti-hallucination prompt — consistently produced traceable, citation-backed answers grounded directly in official 3GPP Technical Specifications. By returning the Technical Specification identifier, release version, section number, and page reference alongside every generated response, the assistant preserved the traceability that is essential in professional telecommunications engineering. Engineers were able to query hundreds of pages of protocol specifications in natural language and receive structured, verifiable answers within a fraction of the time required by traditional manual search.
+
+\subsection*{System Integration}
+
+The integration of the four modules within the Telecom Hub validated the modular architecture adopted throughout the project. By separating domain-specific analytical logic from shared platform services — including session management, configuration handling, logging, and visualization — the platform achieved a consistent user experience across all modules while minimizing code duplication and simplifying maintenance. The Streamlit framework proved well-suited to rapid development of data-intensive engineering dashboards, providing a consistent layout model and interactive widget library that could be applied uniformly across all four analytical modules. The complete platform is implemented in Python~3.11 and is accessible through a standard web browser without client-side installation.
+
+\subsection*{Overall Assessment}
+
+RANPilotAI successfully demonstrated that a small, cohesive software engineering team can design, implement, and integrate a production-quality AI platform for a specialized engineering domain within a single academic project cycle. The platform reduced the time required for the core activities of KPI performance analysis, trend forecasting, optimization impact assessment, and standards consultation, while maintaining engineering accuracy and full result traceability. The combination of statistical rigor, machine learning, retrieval-augmented generation, and version-controlled data management within a unified interface represents a meaningful step toward fully data-driven RAN optimization practice.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Limitations}
+
+Despite the results achieved, several limitations of the current implementation should be acknowledged.
+
+\begin{itemize}
+
+    \item \textbf{Offline-only operation.} The platform currently operates on data uploaded manually by the engineer. There is no live integration with network management systems, Operations Support System (OSS) interfaces, or streaming data pipelines. Consequently, the platform supplements rather than replaces the data export step in the existing engineering workflow.
+
+    \item \textbf{KPI scope.} The KPI Degradation Analyzer and Forecasting Engine were designed and validated against LTE performance data. While the analytical pipeline is applicable to 5G NR KPIs in principle, extended validation against 5G-specific indicators — including gNB-level throughput, PDCP layer metrics, and beam management KPIs — was not completed within the project timeline.
+
+    \item \textbf{RAG knowledge base.} The Telecom RAG Assistant operates on a pre-indexed collection of 3GPP specifications. The accuracy and completeness of answers depend on which specifications have been indexed. Specifications not included in the local index cannot be referenced, and the knowledge base does not update automatically when new 3GPP releases are published.
+
+    \item \textbf{LLM dependency.} The RAG assistant relies on an external Large Language Model for answer generation. The quality, latency, and availability of responses are therefore subject to the limitations and service conditions of the chosen LLM provider.
+
+    \item \textbf{Forecasting horizon.} The KPI Forecasting Engine generates recursive 7-day forward forecasts. Forecast accuracy degrades over longer horizons due to error accumulation in the recursive multi-step prediction strategy, limiting the module's utility for long-term capacity planning.
+
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Future Work}
+
+The current platform establishes a strong foundation for several meaningful extensions that would increase its operational value.
+
+\begin{itemize}
+
+    \item \textbf{Live OSS integration.} Connecting the platform to a vendor OSS API or a streaming KPI data pipeline would eliminate the manual data upload step and enable near-real-time degradation detection. This would allow the KPI Degradation Analyzer to function as a continuous monitoring service rather than a batch-analysis tool.
+
+    \item \textbf{5G NR KPI extension.} Extending the KPI schema, root-cause inference rules, and severity weighting system to cover 5G-specific KPIs — including gNB, DU, and CU layer indicators, beam management metrics, and network slicing performance dimensions — would broaden the platform's applicability to next-generation network operations.
+
+    \item \textbf{Automated action recommendation.} The Optimization Action Analyzer currently reports the measured impact of configuration changes but does not generate recommendations. Integrating a reinforcement learning or optimization model trained on the accumulated action-impact history stored in Dolt could produce proactive, data-driven optimization suggestions tailored to each cell's historical behavior.
+
+    \item \textbf{RAG knowledge base automation.} Building an automated pipeline that monitors 3GPP publication channels, downloads newly released or updated Technical Specifications, processes them through the chunking and embedding pipeline, and updates the Qdrant vector index would keep the RAG assistant current without manual intervention.
+
+    \item \textbf{Multi-modal forecasting.} Incorporating external contextual features — such as public holiday calendars, major events, and weather data — as exogenous inputs to the XGBoost forecasting model could improve forecast accuracy for KPIs that exhibit strong event-driven demand patterns.
+
+    \item \textbf{Role-based access and multi-tenancy.} Adding authentication, role-based access control, and multi-tenant data isolation would allow the platform to be deployed in a shared engineering environment where multiple optimization teams work concurrently without interference.
+
+    \item \textbf{Exportable reports.} Extending the platform to generate structured PDF or HTML reports summarizing the outputs of each analytical module would integrate it more naturally into existing documentation and change management workflows used by operations teams.
+
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Closing Remarks}
+
+The RANPilotAI project demonstrated that the convergence of classical statistical methods, modern machine learning, retrieval-augmented generation, and version-controlled data management — within a carefully integrated engineering platform — can substantially reduce the analytical burden placed on RF optimization engineers. As mobile networks grow in scale and complexity with the continued rollout of 5G New Radio and the emergence of Open RAN architectures, the need for intelligent, automated tooling will only increase.
+
+The platform developed in this project is a practical step in that direction: a working, browser-accessible system that an engineer can deploy today to improve the speed, consistency, and traceability of network optimization decisions. The modular architecture ensures that as new AI techniques and data sources become available, they can be incorporated without redesigning the platform from the ground up.
+
+It is the hope of the development team that RANPilotAI, in its current form or as the foundation for future extensions, contributes meaningfully to the ongoing effort to make RAN optimization faster, smarter, and more accessible to the engineers who keep mobile networks running.

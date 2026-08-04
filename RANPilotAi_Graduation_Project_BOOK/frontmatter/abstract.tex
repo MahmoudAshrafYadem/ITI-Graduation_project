@@ -1,5 +1,18 @@
 \chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
 
-Write your abstract here.
+Modern Radio Access Network (RAN) optimization relies heavily on manual inspection of vast volumes of performance data, expert engineering judgement, and reactive troubleshooting workflows. As LTE and 5G New Radio (NR) networks continue to grow in scale and complexity, this approach becomes increasingly inefficient and unscalable. This graduation project presents \textbf{RANPilotAI}, an integrated, AI-powered platform designed to automate and augment the daily workflows of Radio Frequency (RF) optimization engineers in 4G and 5G mobile networks.
+
+The platform unifies four specialized analytical modules within a single web-based environment called the \textbf{Telecom Hub}, implemented using the Streamlit framework. Engineers can perform multiple optimization tasks through a common interface without switching between separate software tools.
+
+The first module, the \textbf{KPI Degradation Analyzer}, automatically detects performance degradation across 13 Key Performance Indicator categories — including throughput, accessibility, retainability, mobility, availability, VoLTE, CSFB, and RRC re-establishment — using a three-layer analytical pipeline. The pipeline applies Welch's t-test for statistical confidence scoring, RF-aware root cause analysis with configurable severity weighting, and a data quality framework that handles sentinel values, unit-aware validation, and same-weekday baseline imputation.
+
+The second module, the \textbf{KPI Forecasting Engine}, predicts future network performance trends using two complementary time-series models: XGBoost with leakage-safe cross-KPI feature engineering, and Holt-Winters exponential smoothing. The engine provides backtesting metrics (MAE, RMSE, MAPE), STL-based seasonality analysis, recursive 7-day forward forecasts, and residual diagnostics that allow engineers to anticipate degradation before it manifests operationally.
+
+The third module, the \textbf{Optimization Action Analyzer}, correlates RF configuration changes — such as antenna tilt and transmit power adjustments — with KPI impact using Dolt, a version-controlled SQL database. The module aligns configuration commit history with KPI time windows using weekday-matched baseline comparison, groups same-day commits into unified action hunks, and presents results through interactive timeline, before/after overlay, delta bar, and summary impact visualizations.
+
+The fourth module, the \textbf{Telecom RAG Assistant}, is a Retrieval-Augmented Generation system that enables engineers to query official 3GPP Technical Specifications using natural language. The system combines section-aware PDF chunking, BGE-large dense embeddings, local Qdrant vector search, cross-encoder re-ranking, and a strict anti-hallucination prompt to produce traceable, citation-backed answers grounded directly in official standards documentation.
+
+Experimental results demonstrate that the integrated platform substantially reduces the time required for network performance analysis, root cause identification, and standards consultation, while maintaining engineering accuracy and traceability. The RANPilotAI platform is implemented entirely in Python~3.11 and is accessible through a standard web browser without additional client-side installation.
 
 \clearpage
