@@ -1,0 +1,288 @@
+% ============================================================
+%  RANPilotAI – Graduation Project Presentation
+%  ROOT FILE  (like main.tex — do not edit content here)
+%  Intake 46 | Ismailia Branch | Telco-Cloud Track | 2026
+% ============================================================
+\documentclass[aspectratio=169,12pt]{beamer}
+
+% ── Packages ────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{positioning,calc}
+
+% ── Brand colours ───────────────────────────────────────────
+\definecolor{itiRed}{RGB}{180,20,20}
+\definecolor{itiDark}{RGB}{20,20,45}
+\definecolor{itiGray}{RGB}{230,230,235}
+
+% ── Beamer theme ────────────────────────────────────────────
+\usetheme{Madrid}
+\usecolortheme[named=itiDark]{structure}
+
+\setbeamercolor{palette primary}   {bg=itiDark,    fg=white}
+\setbeamercolor{palette secondary} {bg=itiRed,     fg=white}
+\setbeamercolor{palette tertiary}  {bg=itiDark!85, fg=white}
+\setbeamercolor{palette quaternary}{bg=itiDark,    fg=white}
+\setbeamercolor{frametitle}        {bg=itiDark,    fg=white}
+\setbeamercolor{block title}       {bg=itiRed,     fg=white}
+\setbeamercolor{block body}        {bg=itiGray,    fg=itiDark}
+\setbeamercolor{itemize item}      {fg=itiRed}
+\setbeamercolor{itemize subitem}   {fg=itiDark}
+\setbeamercolor{section in toc}    {fg=itiDark}
+
+\setbeamertemplate{itemize item}{\textcolor{itiRed}{\textbullet}}
+\setbeamertemplate{itemize subitem}{\textcolor{itiDark}{$\circ$}}
+\setbeamertemplate{navigation symbols}{}
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+
+% ── Footer ──────────────────────────────────────────────────
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.35\paperwidth,ht=2.4ex,dp=1ex,
+                           left,leftskip=6pt]{palette secondary}%
+      \usebeamerfont{author in head/foot}\insertshortauthor
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.45\paperwidth,ht=2.4ex,dp=1ex,
+                           center]{palette tertiary}%
+      \usebeamerfont{title in head/foot}\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.20\paperwidth,ht=2.4ex,dp=1ex,
+                           right,rightskip=6pt]{palette primary}%
+      \insertframenumber{} / \inserttotalframenumber
+    \end{beamercolorbox}%
+  }%
+}
+
+% ── Shared helpers (available to all section files) ─────────
+%  \speakerslide{Name}{Topics}
+\newcommand{\speakerslide}[2]{%
+  \begin{frame}{}
+    \centering\vspace{0.5cm}
+    \begin{beamercolorbox}[rounded=true,shadow=true,sep=8pt,
+                           center,wd=0.80\linewidth]{block title}
+      {\large\bfseries #1}
+    \end{beamercolorbox}
+    \vspace{0.4cm}
+    \begin{beamercolorbox}[rounded=true,sep=6pt,
+                           center,wd=0.80\linewidth]{block body}
+      {\normalsize #2}
+    \end{beamercolorbox}
+  \end{frame}%
+}
+
+%  \slide{Frame Title}  — empty content placeholder
+\newcommand{\slide}[1]{%
+  \begin{frame}{#1}
+    \vspace{0.6cm}
+    \centering
+    \textcolor{itiDark!35}{\itshape [ Fill in your content here ]}
+  \end{frame}%
+}
+
+%  \screenshotslide{Frame Title}{relative/path/to/image}
+%  ── Drop your screenshot file at the given path and compile.
+%  ── Supported formats: .png  .jpg  .pdf
+%  ── The image is scaled to fill 90 % of the frame width.
+%  ── If the file is missing a labelled placeholder is shown instead.
+% \safeimg{file}{width}{height}
+%   Includes the image if the file exists; otherwise shows a placeholder box.
+%   Uses a dedicated \newread register + bare \openin (no = or braces),
+%   matching how LaTeX's own \IfFileExists works internally.
+\makeatletter
+\newread\@screenshotcheck
+\newcommand{\safeimg}[3]{%
+  \openin\@screenshotcheck #1 %
+  \ifeof\@screenshotcheck
+    \closein\@screenshotcheck
+    \fbox{%
+      \begin{minipage}[c][#3][c]{#2}%
+        \centering
+        {\small\itshape\color{itiDark} Screenshot not yet added}\\[6pt]
+        {\ttfamily\tiny\color{itiDark} \detokenize{#1}}%
+      \end{minipage}%
+    }%
+  \else
+    \closein\@screenshotcheck
+    \includegraphics[width=#2,height=#3,keepaspectratio]{#1}%
+  \fi
+}
+\makeatother
+
+\newcommand{\screenshotslide}[2]{%
+  \begin{frame}{#1}
+    \centering
+    \safeimg{#2}{0.90\textwidth}{0.78\textheight}
+  \end{frame}%
+}
+
+%  \screenshotpair{Frame Title}{Left caption}{Left image}{Right caption}{Right image}
+%  ── Side-by-side screenshots (useful for before/after or two views)
+\newcommand{\screenshotpair}[5]{%
+  \begin{frame}{#1}
+    \begin{columns}[c]
+      \column{.48\textwidth}
+        \centering
+        {\footnotesize\bfseries #2}\\[4pt]
+        \safeimg{#3}{\linewidth}{0.72\textheight}
+      \column{.48\textwidth}
+        \centering
+        {\footnotesize\bfseries #4}\\[4pt]
+        \safeimg{#5}{\linewidth}{0.72\textheight}
+    \end{columns}
+  \end{frame}%
+}
+
+% ── Short meta (footer only) ────────────────────────────────
+\title[RANPilotAI]{RANPilotAI}
+\author[ITI Intake 46]{Tasneem · Ibrahim · Khaled · Mahmoud · Mohab}
+\date{2026}
+
+% ============================================================
+\begin{document}
+% ============================================================
+
+% ── TITLE SLIDE  (fully manual TikZ — no \titlepage) ────────
+\begin{frame}[plain]
+  \begin{tikzpicture}[remember picture, overlay,
+                      shift={(current page.south west)}]
+
+    % White-to-dark gradient approximated with two fills
+    % Full-page dark navy background
+    \fill[itiDark] (0,0) rectangle (\paperwidth,\paperheight);
+
+    % Top red header bar
+    \fill[itiRed] (0,0.78\paperheight)
+                  rectangle (\paperwidth,\paperheight);
+
+    % Thin separator below red bar
+    \fill[itiDark!60] (0,0.755\paperheight)
+                      rectangle (\paperwidth,0.78\paperheight);
+
+    % Bottom dark footer bar
+    \fill[black!60] (0,0) rectangle (\paperwidth,0.10\paperheight);
+
+    % Red accent line above footer
+    \fill[itiRed] (0,0.10\paperheight)
+                  rectangle (\paperwidth,0.115\paperheight);
+
+    % ── Logos inside red bar ──────────────────────────────
+    % ITI logo – left side
+    \node[anchor=west] at (0.04\paperwidth, 0.89\paperheight)
+      {\includegraphics[height=1.5cm]{figures/iti_logo.png}};
+
+    % e& logo – right side
+    \node[anchor=east] at (0.96\paperwidth, 0.89\paperheight)
+      {\includegraphics[height=1.3cm]{figures/etisalat_logo.pdf}};
+
+    % "In collaboration with" under e& logo
+    \node[white, font=\tiny\itshape, anchor=east]
+      at (0.96\paperwidth, 0.805\paperheight)
+      {In collaboration with};
+
+    % ── Main title ───────────────────────────────────────
+    \node[white, font=\fontsize{34}{40}\selectfont\bfseries,
+          anchor=center]
+      at (0.50\paperwidth, 0.62\paperheight)
+      {RANPilotAI};
+
+    % ── Subtitle ─────────────────────────────────────────
+    \node[itiGray, font=\large\itshape, anchor=center]
+      at (0.50\paperwidth, 0.53\paperheight)
+      {AI-Powered RAN Performance Optimization Platform};
+
+    % ── Decorative rule ──────────────────────────────────
+    \draw[itiRed!70, line width=0.8pt]
+      (0.15\paperwidth, 0.48\paperheight) --
+      (0.85\paperwidth, 0.48\paperheight);
+
+    % ── Graduation tag ───────────────────────────────────
+    \node[itiGray!80, font=\small\itshape, anchor=center]
+      at (0.50\paperwidth, 0.44\paperheight)
+      {Graduation Project \textbullet{} 2026};
+
+    % ── Authors ──────────────────────────────────────────
+    \node[white, font=\normalsize\bfseries, anchor=center]
+      at (0.50\paperwidth, 0.37\paperheight)
+      {Tasneem Amein \enspace\textbullet\enspace
+       Ibrahim Samy  \enspace\textbullet\enspace
+       Khaled Mogahed};
+
+    \node[white, font=\normalsize\bfseries, anchor=center]
+      at (0.50\paperwidth, 0.31\paperheight)
+      {Mahmoud Ashraf \enspace\textbullet\enspace Mohab Tarek};
+
+    % ── Supervisor ───────────────────────────────────────
+    \draw[itiGray!30, line width=0.4pt]
+      (0.25\paperwidth, 0.255\paperheight) --
+      (0.75\paperwidth, 0.255\paperheight);
+
+    \node[itiGray, font=\small, anchor=center]
+      at (0.50\paperwidth, 0.215\paperheight)
+      {Supervisor: \textbf{Dr.\ Salma Sobhy}};
+
+    % ── Footer text ──────────────────────────────────────
+    \node[white, font=\small\bfseries, anchor=center]
+      at (0.50\paperwidth, 0.052\paperheight)
+      {Intake 46 \enspace\textbullet\enspace
+       Ismailia Branch \enspace\textbullet\enspace
+       Telco-Cloud Track \enspace\textbullet\enspace
+       Information Technology Institute};
+
+  \end{tikzpicture}
+\end{frame}
+
+% ── AGENDA ──────────────────────────────────────────────────
+\begin{frame}{Agenda}
+  \tableofcontents
+\end{frame}
+
+% ── SECTIONS (one file per presenter) ───────────────────────
+\input{sections/section1_tasneem}
+\input{sections/section2_ibrahim}
+\input{sections/section3_khaled}
+\input{sections/section4_mahmoud}
+\input{sections/section5_mohab}
+
+% ── THANK YOU SLIDE ─────────────────────────────────────────
+\begin{frame}[plain]
+  \begin{tikzpicture}[remember picture, overlay,
+                      shift={(current page.south west)}]
+
+    \fill[itiDark] (0,0) rectangle (\paperwidth,\paperheight);
+    \fill[itiRed]  (0,0.78\paperheight)
+                   rectangle (\paperwidth,\paperheight);
+    \fill[itiDark!60] (0,0.755\paperheight)
+                      rectangle (\paperwidth,0.78\paperheight);
+    \fill[black!60](0,0) rectangle (\paperwidth,0.10\paperheight);
+    \fill[itiRed]  (0,0.10\paperheight)
+                   rectangle (\paperwidth,0.115\paperheight);
+
+    % Logos
+    \node[anchor=west] at (0.04\paperwidth, 0.89\paperheight)
+      {\includegraphics[height=1.5cm]{figures/iti_logo.png}};
+    \node[anchor=east] at (0.96\paperwidth, 0.89\paperheight)
+      {\includegraphics[height=1.3cm]{figures/etisalat_logo.pdf}};
+
+    % Centre text
+    \node[white, font=\Huge\bfseries, anchor=center]
+      at (0.50\paperwidth, 0.58\paperheight) {Thank You};
+
+    \node[itiGray, font=\large, anchor=center]
+      at (0.50\paperwidth, 0.46\paperheight)
+      {Questions \& Discussion};
+
+    % Footer
+    \node[white, font=\small\bfseries, anchor=center]
+      at (0.50\paperwidth, 0.052\paperheight)
+      {RANPilotAI $\cdot$ ITI Intake 46 $\cdot$
+       Ismailia Branch $\cdot$ 2026};
+
+  \end{tikzpicture}
+\end{frame}
+
+\end{document}

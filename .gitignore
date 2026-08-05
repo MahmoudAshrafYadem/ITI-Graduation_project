@@ -75,9 +75,11 @@ OUTPUT/
 *.lof
 *.lot
 *.out
-*.pdf
+.pdf
 *.toc
 *.log
 *.pid
 *.lock
 *.synctex.*
+*.nav
+*.snm
