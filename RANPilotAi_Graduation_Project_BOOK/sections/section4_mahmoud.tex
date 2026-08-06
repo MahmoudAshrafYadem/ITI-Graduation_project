@@ -1,38 +1,106 @@
 % ============================================================
-%  SECTION 4 — Mahmoud Ashraf
-%  Telecom RAG Assistant
-%
-%  SCREENSHOTS → drop files into:  screenshots/mahmoud/
-%  Commands available:
-%    \screenshotslide{Title}{path}          — full-frame single image
-%    \screenshotpair{Title}{L caption}{L path}{R caption}{R path}
-%                                           — two images side by side
+%  SECTION 4 — Mahmoud Ashraf  (Slides 29–35)
+%  Telecom RAG Assistant · Pipeline · Interface · Anti-Hallucination
 % ============================================================
 \section{Telecom RAG Assistant}
 
+% ── Speaker intro slide
 \speakerslide{Mahmoud Ashraf}{%
   Telecom RAG Assistant \textbullet{} Pipeline \textbullet{}
   Interface \textbullet{} Anti-Hallucination Strategy%
 }
 
-% ── 4.1  Overview (text slide)
-\slide{RAG Assistant — Overview \& Motivation}
+% ── Slide 30 — Overview & Motivation
+\begin{frame}{RAG Assistant --- Overview \& Motivation}
+  \begin{columns}[T]
+    \column{.45\textwidth}
+      \begin{block}{The Problem}
+        \begin{itemize}
+          \item Engineers waste hours manually searching 3GPP PDF specs
+          \item Keyword search fails when wording differs from the spec
+          \item General LLMs \textbf{hallucinate} protocol details
+          \item No tool provides citation-backed, spec-grounded answers
+        \end{itemize}
+      \end{block}
+    \column{.45\textwidth}
+      \begin{block}{Our Solution}
+        \begin{itemize}
+          \item \textbf{Engineering-grade RAG} purpose-built for 3GPP
+          \item Fully \textbf{local}: embeddings, vector store, re-ranking
+          \item Every answer cites: TS number, Release, Section, page
+          \item Integrated into RANPilotAI --- no tool switching
+        \end{itemize}
+      \end{block}
+  \end{columns}
+\end{frame}
 
-% ── 4.2  Pipeline architecture (text / diagram slide)
-\slide{RAG Pipeline Architecture}
+% ── Slide 31 — RAG Pipeline Architecture diagram
+\begin{frame}{RAG Pipeline Architecture}
+  \centering
+  \includegraphics[width=0.95\textwidth,height=0.82\textheight,keepaspectratio]%
+    {figures/chapter07/RAG-Pipeline-How-RAG-Works-1024x576.png}
+\end{frame}
 
-% ── 4.3  RAG main interface screenshot
-\screenshotslide{RAG Assistant — Main Interface}
-               {screenshots/mahmoud/rag_home.png}
+% ── Slide 31b — Pipeline key engineering decisions
+\begin{frame}{Pipeline --- Key Engineering Decisions}
+  \small
+  \begin{columns}[T]
+    \column{.50\textwidth}
+      \textbf{Ingestion \& Chunking}
+      \begin{itemize}
+        \item \textbf{Section-aware} PDF parsing (PyMuPDF) splits on
+              3GPP section boundaries --- formulas and ASN.1 never cut mid-way
+        \item Target chunk: 200--350 tokens (max 500)
+        \item 8 chunk types: section, event\_def, ASN.1,
+              table, figure, annex, history, formula
+      \end{itemize}
+    \column{.50\textwidth}
+      \textbf{Retrieval \& Generation}
+      \begin{itemize}
+        \item \textbf{BGE-large-en-v1.5} embedder
+              $\rightarrow$ local \textbf{Qdrant} vector store
+        \item Top-20 retrieved $\rightarrow$ cross-encoder reranker
+              $\rightarrow$ top-5 sent to LLM
+        \item \textbf{Anti-hallucination prompt}: model must say
+              \emph{``cannot find in specifications''} rather than guess
+        \item Metadata filter: restrict to specific TS / Release
+      \end{itemize}
+  \end{columns}
+\end{frame}
 
-% ── 4.4  Query being answered — screenshot
-\screenshotslide{Live Query — Pipeline Execution}
-               {screenshots/mahmoud/rag_query.png}
+% ── Slide 32 — Main Interface
+\begin{frame}{RAG Assistant --- Main Interface}
+  \centering
+  \includegraphics[width=0.90\textwidth,height=0.78\textheight,keepaspectratio]%
+    {figures/chapter07/11.png}
+\end{frame}
 
-% ── 4.5  Retrieved chunks & citations screenshot
-\screenshotslide{Retrieved Chunks \& Source Citations}
-               {screenshots/mahmoud/rag_citations.png}
+% ── Slide 33 — Live Query: pipeline execution steps
+\begin{frame}{Live Query --- Pipeline Execution Steps}
+  \centering
+  \includegraphics[width=0.90\textwidth,height=0.78\textheight,keepaspectratio]%
+    {screenshots/mahmoud/rag_pipeline_steps.png}
+\end{frame}
 
-% ── 4.6  Anti-hallucination / answer panel screenshot
-\screenshotslide{Answer Panel — Citation-Backed Response}
-               {screenshots/mahmoud/rag_answer.png}
+% ── Slide 34 — Retrieved chunks and citations
+\begin{frame}{Retrieved Chunks \& Source Citations}
+  \centering
+  \includegraphics[width=0.90\textwidth,height=0.78\textheight,keepaspectratio]%
+    {figures/chapter07/6.png}
+\end{frame}
+
+% ── Slide 35 — Answer panel (left) + backend pipeline stages (right)
+\begin{frame}{Answer Panel \& Backend Response}
+  \begin{columns}[c]
+    \column{.52\textwidth}
+      \centering
+      {\footnotesize\bfseries Citation-Backed Answer Panel}\\[4pt]
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]%
+        {figures/chapter07/1.png}
+    \column{.46\textwidth}
+      \centering
+      {\footnotesize\bfseries Backend Pipeline Stages}\\[4pt]
+      \includegraphics[width=\linewidth,height=0.72\textheight,keepaspectratio]%
+        {screenshots/mahmoud/rag_pipeline_steps.png}
+  \end{columns}
+\end{frame}
