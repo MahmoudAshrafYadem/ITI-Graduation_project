@@ -267,7 +267,7 @@ This protocol ensures that the system does not overstate the value of machine le
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/chapter05/image(3).png}
+    \includegraphics[width=0.95\textwidth]{figures/chapter05/image3.png}
     \caption{Dashboard header for cell \texttt{LCAIN10022-6} forecasting DL Traffic Volume. The seasonality strength badge (0.87) and baseline comparison panel confirm that Holt-Winters (MAE 6.352) substantially outperforms the naive baseline (MAE 16.384), validating model deployment for this cell.}
     \label{fig:metrics_panel}
 \end{figure}
@@ -294,7 +294,7 @@ Figure~\ref{fig:forecast_chart} presents a representative forecast visualization
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/chapter05/image(2).png}
+    \includegraphics[width=0.95\textwidth]{figures/chapter05/image2.png}
     \caption{Forecast chart for DL Traffic Volume (GBytes) on cell \texttt{LCAIN10022-6}. The strong weekly seasonality is accurately tracked by Holt-Winters (purple), while XGBoost (red) exhibits larger deviations during the hold-out period. The naive baseline (gray dotted) flatlines at the last training value.}
     \label{fig:forecast_chart}
 \end{figure}
@@ -313,14 +313,14 @@ For the XGBoost model, in-sample training residuals are subjected to a four-pane
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/chapter05/image(5).png}
+    \includegraphics[width=0.95\textwidth]{figures/chapter05/image5.png}
     \caption{Residual summary statistics for XGBoost on the training set. Mean residual $=$ 0.0027, standard deviation $=$ 0.2397, Durbin-Watson $=$ 1.638 (within acceptable range), and Ljung-Box $p$-value $=$ 0.923 (no significant autocorrelation).}
     \label{fig:residual_summary}
 \end{figure}
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/chapter05/image(6).png}
+    \includegraphics[width=0.95\textwidth]{figures/chapter05/image6.png}
     \caption{Four-panel residual diagnostic plot for XGBoost. Top-left: residuals over time with zero reference; top-right: residual histogram; bottom-left: ACF with 95\% confidence bands; bottom-right: residuals versus fitted values. The absence of structure supports the white-noise hypothesis.}
     \label{fig:residual_diagnostics}
 \end{figure}
@@ -331,7 +331,7 @@ Gain-based feature importance from XGBoost reveals which engineered signals driv
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.95\textwidth]{figures/chapter05/image(4).png}
+    \includegraphics[width=0.95\textwidth]{figures/chapter05/image4.png}
     \caption{Top-15 XGBoost feature importance by gain for DL Traffic Volume forecasting. \texttt{lag7\_norm} and \texttt{lag\_14} dominate, confirming strong weekly periodicity. Cross-KPI features (\texttt{Inter\_HO\_SR}, \texttt{Avg\_UE\_Number}) and momentum terms contribute non-linear explanatory power.}
     \label{fig:feature_importance}
 \end{figure}
@@ -340,7 +340,7 @@ Figure~\ref{fig:hyperparameters} shows the sidebar control panel through which o
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=0.45\textwidth]{figures/chapter05/image(7).png}
+    \includegraphics[width=0.45\textwidth]{figures/chapter05/image7.png}
     \caption{Streamlit sidebar exposing XGBoost hyperparameters: \texttt{n\_estimators}=100, \texttt{learning\_rate}=0.05, \texttt{max\_depth}=3, and \texttt{subsample}=0.80.}
     \label{fig:hyperparameters}
 \end{figure}
