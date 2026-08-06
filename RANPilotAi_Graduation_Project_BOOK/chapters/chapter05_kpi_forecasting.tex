@@ -76,7 +76,7 @@ In addition, the Autocorrelation Function (ACF) of residuals is inspected visual
 
 The forecasting module satisfies the following functional requirements derived from the broader proactive maintenance pipeline:
 
-\begin{enumerate}[FR-1.]
+\begin{enumerate}[label=FR-\arabic*.]
     \item \textbf{Multi-model execution:} Support at least one statistical benchmark (Holt-Winters), one machine-learning model (XGBoost), and naive baselines.
     \item \textbf{Leakage-safe feature engineering:} All predictive features must be computable using only past observations relative to the forecast origin.
     \item \textbf{Automatic model selection:} Compare each candidate against a naive baseline on a hold-out window and recommend the best performer.
@@ -362,4 +362,3 @@ This chapter presented the KPI Forecasting \& Predictive Analytics Module, a mul
 
     \item The module exposes its outputs through an interactive Streamlit dashboard and generates \textbf{LLM-ready reports} for downstream natural-language reasoning, bridging quantitative forecasting with qualitative network optimization.
 \end{itemize}
-Write the chapter here.

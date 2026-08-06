@@ -326,16 +326,16 @@ Figure~\ref{fig:workflow} and summarised below.
     \centering
     \begin{tikzpicture}[
         node distance=6mm,
-        step/.style={draw, rounded corners, fill=cyan!8,
+        stepbox/.style={draw, rounded corners, fill=cyan!8,
                      minimum width=9.5cm, minimum height=0.9cm,
                      align=left, font=\small},
         arrow/.style={-{Latex[length=2mm]}, thick}
     ]
-        \node[step] (s1) {\textbf{\textcircled{1}} Action Timeline --- browse all Action Hunks};
-        \node[step, below=of s1] (s2) {\textbf{\textcircled{2}} Select Action Hunk + KPI + evaluation window options};
-        \node[step, below=of s2] (s3) {\textbf{\textcircled{3}} KPI Trend --- Before vs. After (aggregated or per-day)};
-        \node[step, below=of s3] (s4) {\textbf{\textcircled{4}} Interval Delta --- After minus Before, polarity-coded};
-        \node[step, below=of s4] (s5) {\textbf{\textcircled{5}} KPI Impact Summary --- all metrics, one table};
+        \node[stepbox] (s1) {\textbf{\textcircled{1}} Action Timeline --- browse all Action Hunks};
+        \node[stepbox, below=of s1] (s2) {\textbf{\textcircled{2}} Select Action Hunk + KPI + evaluation window options};
+        \node[stepbox, below=of s2] (s3) {\textbf{\textcircled{3}} KPI Trend --- Before vs. After (aggregated or per-day)};
+        \node[stepbox, below=of s3] (s4) {\textbf{\textcircled{4}} Interval Delta --- After minus Before, polarity-coded};
+        \node[stepbox, below=of s4] (s5) {\textbf{\textcircled{5}} KPI Impact Summary --- all metrics, one table};
         \draw[arrow] (s1) -- (s2);
         \draw[arrow] (s2) -- (s3);
         \draw[arrow] (s3) -- (s4);

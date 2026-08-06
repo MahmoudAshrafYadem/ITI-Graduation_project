@@ -1,3 +1,113 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \chapter{Literature Review}
+\label{chap:literature_review}
 
-Write the Literature Review here.
+This chapter surveys the research literature and established engineering practice relevant to the development of the RANPilotAI platform. The review is organised thematically, progressing from foundational concepts in mobile network performance management through advanced machine learning and information retrieval techniques to software architecture considerations for integrated engineering platforms. Each section establishes the theoretical and practical context for the corresponding module of the RANPilotAI platform, identifies gaps in existing tooling, and justifies the technical approaches adopted in this project.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+
+The convergence of mobile telecommunications, statistical computing, and artificial intelligence has produced a rich body of research spanning network performance management, time-series forecasting, root cause analysis, and retrieval-augmented generation. This literature review synthesises the most relevant contributions across these domains and maps them to the four analytical modules developed within the RANPilotAI platform.
+
+The review begins with the fundamentals of LTE and 5G NR performance management, establishing the KPI taxonomy and measurement methodology that underpin all subsequent analysis. It then examines statistical methods for degradation detection, machine learning approaches to time-series forecasting, and knowledge-engineering techniques for root cause attribution. The review continues with information retrieval and natural language processing research relevant to the Telecom RAG Assistant, and concludes with software architecture literature that informed the design of the integrated platform.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Network KPI Monitoring and Performance Management}
+
+\subsection{LTE and 5G NR Performance Architecture}
+
+Modern LTE and 5G NR networks implement a hierarchical performance management architecture defined by the Third Generation Partnership Project (3GPP) in Technical Specification 32.401. This specification establishes the standard set of Key Performance Indicators, measurement procedures, and reporting formats used by network operators worldwide \cite{sesia2011}. The performance management architecture operates through three logical entities: the Network Element (NE), which generates performance counters; the Operations Support System (OSS), which collects and processes these counters; and the Network Management System (NMS), which presents processed results to engineering personnel.
+
+The standard defines three measurement types: count-type measurements, which accumulate events over a measurement period; gauge-type measurements, which capture instantaneous values such as buffer occupancy; and status-type measurements, which indicate the presence or absence of specific conditions. Each measurement is associated with a measurement scope — cell, eNodeB, or network level — and a reporting period that typically ranges from 15 minutes to 24 hours depending on the KPI criticality.
+
+Dahlman et al. provide a comprehensive treatment of the 5G NR physical layer and system architecture, establishing the performance characteristics and operational constraints that inform the KPI schema developed for the RANPilotAI platform \cite{dahlman2020}. Their work describes the relationship between radio resource configuration, scheduling decisions, and resulting throughput and latency metrics, providing the domain knowledge required to interpret degradation patterns and assign meaningful root cause classifications.
+
+\subsection{Performance Degradation Detection}
+
+Automated performance degradation detection in cellular networks has been an active research area since the adoption of LTE technology. Mishra provides foundational coverage of cellular network planning and optimisation, including threshold-based alerting methodologies and the limitations of fixed-threshold approaches in heterogeneous network environments \cite{mishra2007}. The primary limitation identified in this literature is that threshold crossing alone provides no information about the probable root cause of the degradation and cannot account for cell-specific baseline performance variations.
+
+Holma and Toskala's treatment of LTE-Advanced systems examines the performance management requirements of evolved networks, including the introduction of carrier aggregation, coordinated multi-point transmission, and heterogeneous network topologies \cite{holma2011}. Their analysis demonstrates that these advanced features increase the dimensionality of performance analysis, making manual inspection increasingly impractical and motivating the development of automated, statistically rigorous detection methods.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Statistical Methods for Performance Analysis}
+
+\subsection{Hypothesis Testing for Degradation Confidence}
+
+Welch's two-sample t-test is the primary statistical method employed by the RANPilotAI KPI Degradation Analyzer for assigning confidence levels to detected degradations. The test is preferred over the standard Student's t-test because it does not assume equal variance between the recent observation window and the baseline window — an assumption commonly violated in KPI degradation scenarios where the degradation period is characterised by increased variance \cite{montgomery2018}.
+
+The test statistic is computed as:
+
+\begin{equation}
+    t = \frac{\bar{x}_{\text{recent}} - \bar{x}_{\text{baseline}}}{\sqrt{\dfrac{s_{\text{recent}}^2}{n_{\text{recent}}} + \dfrac{s_{\text{baseline}}^2}{n_{\text{baseline}}}}}
+\end{equation}
+
+The resulting p-value is used to assign a statistical confidence label — High, Medium, or Low — to each detected degradation. Critically, the p-value is treated as advisory evidence rather than as a hard gate: cells with operationally significant degradation magnitudes are retained in the output even when statistical confidence is Low due to insufficient sample count, reflecting the engineering requirement to avoid missing potentially critical network issues.
+
+\subsection{Baseline Computation Methods}
+
+The choice of baseline computation method significantly affects the sensitivity and specificity of degradation detection. The RANPilotAI platform implements two baseline modes: Same Weekdays -- Last Week, which computes the baseline from the corresponding weekday in the immediately preceding week; and Historical Weekday Median, which computes the baseline from the median of the same weekday across a configurable number of lookback weeks.
+
+The Historical Weekday Median mode provides greater robustness against week-to-week variability by filtering out transient anomalies and special events that may have affected a single baseline week. This mode is particularly valuable in operational environments where traffic patterns exhibit strong weekly periodicity but may be disrupted by holidays, promotional events, or maintenance activities.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Machine Learning for Time Series Forecasting}
+
+\subsection{Classical Time Series Methods}
+
+Holt-Winters exponential smoothing represents the classical approach to seasonal time series forecasting and serves as the statistical benchmark in the RANPilotAI KPI Forecasting Engine. The method decomposes a time series into level, trend, and seasonal components, updating each component via exponential smoothing as new observations become available \cite{hyndman2018}. The additive and multiplicative seasonal variants accommodate different growth patterns in the underlying series, while the damped trend variant prevents unrealistic extrapolation for long-horizon forecasts.
+
+Hyndman and Athanasopoulos provide a comprehensive treatment of forecasting principles, including the evaluation metrics adopted in the RANPilotAI platform: Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and Mean Absolute Percentage Error (MAPE) \cite{hyndman2018}. Their analysis of baseline forecasting methods establishes the naive and seasonal naive benchmarks against which more sophisticated models must justify their complexity.
+
+\subsection{Gradient Boosting for Non-linear Temporal Modelling}
+
+XGBoost gradient boosting represents the machine learning component of the RANPilotAI forecasting ensemble. Gradient boosting constructs an additive model by sequentially fitting decision trees to the residuals of the current ensemble, with each tree correcting the errors of its predecessors \cite{james2021}. The method handles non-linear relationships, feature interactions, and heterogeneous feature types without requiring explicit feature scaling or transformation.
+
+The critical challenge in applying gradient boosting to network KPI forecasting is preventing data leakage — the inadvertent use of future information during model training. The RANPilotAI platform addresses this through leakage-safe feature engineering in which all predictive features are computed using only observations available at the forecast origin, ensuring that model performance estimates are valid for operational deployment.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Root Cause Analysis in Telecommunications}
+
+\subsection{Rule-Based Root Cause Inference}
+
+Root cause analysis (RCA) in telecommunications networks has traditionally relied on rule-based expert systems that encode domain knowledge as conditional inference rules. The RANPilotAI platform implements an RF-aware RCA engine that applies over 140 correlated detection rules to classify degraded cells into eight operational patterns: Outage, Congestion, Radio Quality, Coverage, Interference, Mobility, Demand, and Unknown.
+
+The composite scoring mechanism combines four additive components: base severity weight assigned to the diagnostic counter type, RF-layer priority bonus reflecting higher diagnostic priority of physical layer counters, threshold score increment applied when counter values exceed predefined engineering thresholds, and magnitude score component proportional to the absolute deviation of the counter from its expected value.
+
+\subsection{Data Quality and Artefact Handling}
+
+Real-world KPI exports contain numerous data quality artefacts that must be detected and handled before statistical analysis. The RANPilotAI platform implements a data quality framework that detects sentinel values — large integer constants used by Huawei systems to indicate counter unavailability — negative values in non-negative counters, values exceeding theoretical bounds for percentage KPIs, and cells with incomplete observation windows. These artefacts are filtered or imputed before analysis to prevent incorrect degradation magnitude computation and false root cause assignments.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Retrieval-Augmented Generation for Engineering Domains}
+
+\subsection{Information Retrieval Foundations}
+
+The Telecom RAG Assistant builds upon classical information retrieval principles described by Manning et al. \cite{manning2008}. The fundamental challenge in technical document retrieval is the vocabulary mismatch between user queries and indexed document content. Semantic embedding models address this by mapping both queries and documents into a shared vector space where semantically related text segments are positioned near each other regardless of exact term overlap.
+
+\subsection{Neural Re-ranking and Anti-hallucination}
+
+The RANPilotAI RAG pipeline employs cross-encoder re-ranking to improve retrieval precision by scoring query-document pairs with a bidirectional transformer model. This two-stage retrieval architecture — coarse semantic retrieval followed by precise re-ranking — balances computational efficiency with retrieval accuracy. Strict anti-hallucination prompt engineering ensures that generated responses are grounded exclusively in retrieved document excerpts, preventing the language model from introducing unsupported technical claims \cite{jurafsky2023}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Software Architecture for Integrated Platforms}
+
+\subsection{Modular Architecture Patterns}
+
+The RANPilotAI platform adopts a modular architecture in which the Telecom Hub functions as a central coordination point while individual analytical modules operate as independent subsystems. Bass et al. describe the architectural principles underlying such modular designs, including the separation of concerns, information hiding, and the management of cross-cutting concerns such as logging, authentication, and data persistence through shared infrastructure components \cite{bass2021}.
+
+Gamma et al.'s catalog of design patterns informs the implementation of module communication through standardized interfaces, enabling new analytical modules to be integrated without modifying existing platform infrastructure \cite{gamma1994}. The Strategy pattern is applied to model selection in the forecasting engine, allowing new prediction models to be incorporated through a common evaluation interface. The Observer pattern supports real-time progress reporting during long-running analyses, and the Facade pattern simplifies module interaction by presenting a consistent API surface to the Telecom Hub.
+
+\subsection{Web-Based Deployment Architectures}
+
+Sommerville's treatment of software engineering establishes the principles guiding the platform's web-based deployment architecture \cite{sommerville2015}. The decision to implement the platform as a browser-accessible web application rather than a desktop application addresses several operational requirements: platform independence across Windows, macOS, and Linux workstations; simplified deployment through a single Python process rather than per-workstation installation; and the ability to serve multiple engineers from a shared server instance.
+
+Pressman and Maxim's practitioner-oriented approach to software engineering reinforces the importance of maintainability, testability, and scalability in the platform design \cite{pressman2014}. The adoption of type-annotated Python, comprehensive docstrings, and separation of analytical logic from presentation logic ensures that the platform can be extended and maintained by future development teams without requiring architectural redesign.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Summary}
+
+This chapter has surveyed the research literature relevant to the development of the RANPilotAI platform. The review has established the theoretical foundations for statistical degradation detection through Welch's t-test and baseline computation methodologies, machine learning-based time-series forecasting using Holt-Winters exponential smoothing and XGBoost gradient boosting, rule-based root cause analysis with RF-aware severity weighting, retrieval-augmented generation for technical document consultation, and modular software architecture patterns for integrated engineering platforms.
+
+The literature review identifies a clear gap in existing tooling: the absence of an integrated platform that combines statistically rigorous degradation detection, predictive forecasting, configuration impact analysis, and standards consultation within a unified engineering environment. The RANPilotAI platform addresses this gap by implementing each of these capabilities as a dedicated module within a modular, web-based architecture guided by established software engineering principles.
+
+Chapter~\ref{chap:system_design} presents the detailed system design of the RANPilotAI platform, translating the requirements and theoretical foundations established in this chapter into concrete software architecture, technology selections, data management strategies, and module integration interfaces.
