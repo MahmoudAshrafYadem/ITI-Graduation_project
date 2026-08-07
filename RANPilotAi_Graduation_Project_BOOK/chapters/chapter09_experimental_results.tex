@@ -1,3 +1,366 @@
 \chapter{Experimental Results}
 
-Write the chapter here.
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{pifont}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+\definecolor{codebg}{gray}{0.95}
+
+\lstset{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  framerule=0pt,
+  columns=fullflexible
+}
+
+\title{\textbf{LTE RAN KPI Analysis Tool -- Test Plan}}
+
+\date{\today}
+
+\begin{document}
+
+\section{Introduction}
+\subsection{Purpose}
+This document defines the complete testing strategy for the LTE RAN KPI Analysis Tool. The objective is to verify that every module performs according to its functional requirements while ensuring correctness of KPI degradation calculations, root cause analysis (RCA), anomaly detection, dashboard preparation, and report generation.
+
+
+\begin{itemize}[leftmargin=*]
+    \textbf{\item {The test plan validate:}}
+    \item Functional correctness
+    \item Statistical correctness
+    \item Data quality handling
+    \item Robustness against invalid datasets
+    \item Performance on large LTE datasets
+    \item Integration between analysis modules
+\end{itemize}
+
+\section{Scope}
+The following modules are included in the test scope:
+
+\begin{table}[h!]
+\centering
+\begin{tabularx}{0.6\textwidth}{X c}
+\toprule
+\textbf{Module} & \textbf{Tested} \\
+\midrule
+Excel Import & \checkmark \\
+Data Cleaning & \checkmark \\
+KPI Configuration & \checkmark \\
+Baseline Calculation & \checkmark \\
+Day-by-Day Degradation Engine & \checkmark \\
+Statistical Significance Test & \checkmark \\
+RCA Engine & \checkmark \\
+Cell Outage Detection & \checkmark \\
+Multi-KPI Analysis & \checkmark \\
+Dashboard Dataset Generator & \checkmark \\
+Degraded Cell Removal & \checkmark \\
+Word Report Generator & \checkmark \\
+Visualization Module & \checkmark \\
+Logging & \checkmark \\
+Error Handling & \checkmark \\
+\bottomrule
+\end{tabularx}
+\end{table}
+\newpage
+\section{Testing Levels}
+
+\subsection{Unit Testing}
+Each function is tested independently .
+\paragraph{Examples:}
+\begin{itemize}[leftmargin=*]
+    \item \texttt{calculate\_degradation()}
+    \item \texttt{compute\_day\_by\_day\_degradation()}
+    \item \texttt{perform\_ttest()}
+    \item \texttt{validate\_columns()}
+    \item \texttt{detect\_cell\_outage()}
+    \item \texttt{generate\_outage\_rca()}
+\end{itemize}
+
+\subsection{Integration Testing}
+Validates interaction between: Excel Reader $\rightarrow$ Cleaning $\rightarrow$ Baseline $\rightarrow$ KPI Analysis $\rightarrow$ RCA $\rightarrow$ Dashboard $\rightarrow$ Word Report.
+
+\subsection{System Testing}
+Complete execution from loading Excel until generating Dashboard, Word report, Summary, and RCA.
+
+\section{Functional Test Cases}
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X X X X}
+\toprule
+\textbf{TC ID} & \textbf{Requirement} & \textbf{Test Scenario} & \textbf{Test Input} & \textbf{Expected Result} \\
+\midrule
+TC-001 & Import LTE KPI dataset & Upload a valid Excel file & Valid LTE KPI Excel & Dataset imported successfully \\
+TC-002 & Validate input file & Upload corrupted Excel file & Corrupted file & Validation error displayed \\
+TC-003 & Validate required columns & File missing mandatory columns & Missing KPI column & Missing-column error generated \\
+TC-004 & Clean column names & Import dataset with extra spaces & Inconsistent headers & Column names standardized \\
+TC-005 & Convert numeric values & Dataset contains numeric strings & Mixed numeric formats & Numeric values converted correctly \\
+TC-006 & Parse dates & Dataset contains valid dates & Date column & Dates converted successfully \\
+TC-007 & Remove invalid dates & Dataset contains invalid dates & Invalid date values & Invalid rows excluded \\
+TC-008 & Load KPI configuration & Initialize KPI configuration & Configuration file & All KPI definitions loaded \\
+TC-009 & Select KPI & Choose one KPI & Accessibility KPI & KPI selected correctly \\
+TC-010 & Invalid KPI selection & Select undefined KPI & Invalid KPI name & Value Error generated \\
+TC-011 & Last Week baseline & Select Last Week mode & Historical dataset & Same weekday baseline calculated \\
+TC-012 & Rolling baseline & Select 4-week mode & Historical dataset & 4-week median baseline calculated \\
+TC-013 & Historical fallback & Missing baseline values & Incomplete history & Historical fallback applied \\
+TC-014 & Minimum baseline & No historical baseline & Empty baseline & Minimum baseline assigned \\
+TC-015 & Prevent imputation & Missing recent values & Recent window missing & Recent values remain unchanged \\
+TC-016 & Day-by-day degradation & Execute degradation calculation & Recent and baseline & Median degradation calculated \\
+TC-017 & Ratio KPI calculation & Analyze ratio KPI & Success rate KPI & Difference degradation calculated \\
+TC-018 & Volume KPI calculation & Analyze traffic KPI & Throughput KPI & Percentage degradation calculated \\
+TC-019 & Zero baseline handling & Baseline equals zero & KPI values & No divide-by-zero error \\
+TC-020 & Near-zero baseline & Extremely small baseline & Small KPI values & Winsorized degradation applied \\
+TC-021 & Spike-day robustness & One abnormal day & Multi-day history & Median unaffected by spike \\
+TC-022 & Missing comparison day & Missing recent day & Partial dataset & Cell marked incomplete \\
+TC-023 & Baseline recovery & Missing baseline days & Sparse history & Baseline resolved using fallback \\
+TC-024 & Threshold evaluation & KPI exceeds threshold & High degradation & Status = Degraded \\
+TC-025 & Normal classification & KPI below threshold & Low degradation & Status = Normal \\
+TC-026 & Statistical significance & Enable t-test & KPI observations & p-value calculated \\
+TC-027 & Insufficient samples & Small sample size & Limited observations & Test skipped gracefully \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\clearpage
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{l X X X X}
+\toprule
+\textbf{TC ID} & \textbf{Requirement} & \textbf{Test Scenario} & \textbf{Test Input} & \textbf{Expected Result} \\
+\midrule
+TC-028 & Invalid counter & Negative KPI values & Invalid counters & Values quarantined \\
+TC-029 & Sentinel value & Sentinel values exist & Sentinel inputs & Converted to NaN \\
+TC-030 & Extreme value & Unrealistic KPI values & Outliers & Recorded in quarantine \\
+TC-031 & Incomplete data report & Missing baseline/recent days & Partial dataset & Incomplete report generated \\
+TC-032 & Single KPI analysis & Analyze selected KPI & Accessibility KPI & Analysis completed successfully \\
+TC-033 & Analyze all KPIs & Run batch analysis & Complete dataset & All KPIs analyzed \\
+TC-034 & KPI failure isolation & Force one KPI failure & Invalid KPI & Remaining KPIs continue processing \\
+TC-035 & KPI summary gen. & Complete batch analysis & Analysis output & Summary table generated \\
+TC-036 & Combine degraded & Multiple degraded KPIs & Analysis results & Combined cell list created \\
+TC-037 & Cell outage detection & DL=0 and UL=0 & Traffic counters & Cell classified as outage \\
+TC-038 & Normal traffic val. & DL>0 or UL>0 & Traffic counters & No outage detected \\
+TC-039 & Root Cause Analysis & Related counters available & Degraded KPI & Root cause identified \\
+TC-040 & Multiples cause & Multiple degraded counters & KPI dataset & Multi-cause analysis generated \\
+TC-041 & Missing counters & Related counters absent & KPI dataset & Manual investigation rec. \\
+TC-042 & RCA recommendation & RCA completed & RCA output & Correct recommendations generated \\
+TC-043 & Remove degraded & Remove all degraded cells & Combined list & Clean dataset produced \\
+TC-044 & Remove recent cells & Recent-only removal & Recent degradation & Recent records removed \\
+TC-045 & Remove cells by KPI & KPI filter enabled & Selected KPI & Only filtered cells removed \\
+TC-046 & Empty degraded list & No degraded cells & Normal dataset & Original dataset returned \\
+TC-047 & Dashboard gen. & Generate dashboard data & Clean dataset & Dashboard-ready data produced \\
+TC-048 & Generate Word report & Export analysis & Completed analysis & Report generated successfully \\
+TC-049 & Include RCA in report & Export report & RCA results & RCA section included \\
+TC-050 & Enhancement potential & Generate report & Original \& cleaned & Enhancement potential calculated \\
+\bottomrule
+\end{tabularx}
+\end{center}
+\newpage
+\section{Boundary Testing}
+
+\begin{table}[h!]
+\centering
+\begin{tabularx}{0.5\textwidth}{X X}
+\toprule
+\textbf{Test} & \textbf{Expected} \\
+\midrule
+Empty Excel & Error \\
+One row & Process \\
+One day & Incomplete \\
+Zero threshold & All degraded \\
+Very high threshold & None degraded \\
+Maximum degradation & Clipped \\
+Large KPI values & Stable \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Negative Testing}
+\begin{itemize}[leftmargin=*, grid]
+    \item Missing KPI column / Cell ID / Site Name / Cell Name / Local Cell ID
+    \item Wrong date format
+    \item Duplicate rows
+    \item Non-numeric counters, Infinite values, NaN everywhere
+    \item Empty baseline or empty recent window
+    \item Invalid KPI name
+\end{itemize}
+
+\section{Regression Testing}
+Every software update must verify:
+\begin{enumerate}
+    \item KPI calculations
+    \item RCA accuracy
+    \item Baseline calculation
+    \item Dashboard output
+    \item Report generation 
+    \item Threshold handling 
+    \item Data cleaning 
+    \item Statistical significance 
+    \item Cell removal 
+\end{enumerate}
+
+\section{Acceptance Criteria}
+The project is accepted when :
+\begin{itemize}
+    \item All KPIs are analyzed successfully .
+    \item Day-by-day degradation calculations are correct .
+    \item Statistical tests are executed correctly .
+    \item RCA identifies valid degradation causes .
+    \item Cell outage detection functions correctly .
+    \item Dashboard excludes degraded cells correctly .
+    \item Reports are generated without errors .
+    \item Invalid data is quarantined rather than causing failures .
+    \item Application remains stable if a single KPI analysis fails .
+    \item Performance meets expected runtime for large LTE datasets .
+\end{itemize}
+
+\subsection{Test Coverage Summary}
+\begin{table}[h!]
+\centering
+\begin{tabularx}{0.7\textwidth}{X c}
+\toprule
+\textbf{Area} & \textbf{Coverage} \\
+\midrule
+Excel Import, Data Cleaning, KPI Configuration & 100\% \\
+Baseline Resolution, Day-by-Day Degradation & 100\% \\
+Statistical Testing, Data Quality Validation & 100\% \\
+RCA Engine, Cell Outage Detection, Multi-KPI & 100\% \\
+Degraded Cell Removal, Dashboard Prep, Reports & 100\% \\
+Logging, Error Handling, Boundary \& Negative Testing & 100\% \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\newpage
+\section{Testing Framework Architecture}
+The framework uses a modular architecture where each module validates one part of the pipeline independently :
+
+\begin{verbatim}
+testing.py
+├── test_helper_functions.py      (Helper and utility function testing)
+├── test_fallback_functions.py    (Baseline fallback algorithm testing)
+├── test_main_cause_functions.py  (Root cause analysis testing)
+├── test_main_testing_function.py (Independent KPI analysis)
+└── test_compare_functions.py     (Comparison against production output)
+\end{verbatim}
+
+\subsection{Workflow Diagram}
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.8cm,
+    block/.style={rectangle, draw, rounded corners, fill=blue!5, text width=4.5cm, align=center, minimum height=0.7cm, font=\small\sffamily},
+    arrow/.style={-{Stealth[length=2mm]}, thick}
+]
+    \node (n1) [block] {Load Cell Data};
+    \node (n2) [block, below=of n1] {Generate Periods};
+    \node (n3) [block, below=of n2] {Aggregate Recent KPI};
+    \node (n4) [block, below=of n3] {Aggregate Baseline KPI};
+    \node (n5) [block, below=of n4] {Calculate Daily Degradation};
+    \node (n6) [block, below=of n5] {Run t-test};
+    \node (n7) [block, below=of n6] {Apply Baseline Fallback};
+    \node (n8) [block, below=of n7] {Determine KPI Status};
+    \node (n9) [block, below=of n8] {Generate Metadata};
+    \node (n10) [block, below=of n9] {Run Root Cause Analysis};
+    \node (n11) [block, below=of n10] {Export Results};
+    \node (n12) [block, below=of n11] {Validation Report};
+
+    \draw [arrow] (n1) -- (n2);
+    \draw [arrow] (n2) -- (n3);
+    \draw [arrow] (n3) -- (n4);
+    \draw [arrow] (n4) -- (n5);
+    \draw [arrow] (n5) -- (n6);
+    \draw [arrow] (n6) -- (n7);
+    \draw [arrow] (n7) -- (n8);
+    \draw [arrow] (n8) -- (n9);
+    \draw [arrow] (n9) -- (n10);
+    \draw [arrow] (n10) -- (n11);
+    \draw [arrow] (n11) -- (n12);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Modular Subsystem Map}
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=0.6cm and 0.5cm,
+    block/.style={rectangle, draw, rounded corners, fill=teal!5, text width=3.8cm, align=center, minimum height=0.6cm, font=\footnotesize\sffamily},
+    arrow/.style={-{Stealth[length=2mm]}, thick}
+]
+    \node (main) [block, fill=teal!15] {\textbf{testing.py}};
+    \node (load) [block, below=0.5cm of main] {Load KPI Dataset};
+    \node (helper) [block, below=of load] {test\_helper\_functions};
+    \node (maintest) [block, below=of helper] {test\_main\_testing\_function};
+    
+    \node (fallback) [block, below left=0.8cm and -0.5cm of maintest] {test\_fallback\_functions};
+    \node (cause) [block, below right=0.8cm and -0.5cm of maintest] {test\_main\_cause\_functions};
+    
+    \node (compare) [block, below right=0.8cm and -0.5cm of fallback] {test\_compare\_functions};
+    \node (report) [block, below=of compare] {Validation Report};
+
+    \draw [arrow] (main) -- (load);
+    \draw [arrow] (load) -- (helper);
+    \draw [arrow] (helper) -- (maintest);
+    \draw [arrow] (maintest) -- (fallback);
+    \draw [arrow] (maintest) -- (cause);
+    \draw [arrow] (fallback) -- (compare);
+    \draw [arrow] (cause) -- (compare);
+    \draw [arrow] (compare) -- (report);
+\end{tikzpicture}
+\end{center}
+
+\section{Test Execution Observations}
+
+\subsection{Test Case: TC-001}
+\textbf{Title:} Verify KPI Analysis Using Custom Range Baseline 
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Expected Result:} Analysis completes successfully; outputs match main implementation; exact number of degraded cells detected .
+    \item \textbf{Actual Observation:} Executed without error; 32 common cells matched with 0 differences 
+\end{itemize}
+
+\begin{lstlisting}
+Running analysis for KPI: DL Traffic, Baseline Mode: custom_range , start date: 2026-05-08, end date: 2026-05-14
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
+Missing rows for KPI: DL Traffic, Days: 7, Baseline Mode: custom_range:
+
+Total common rows: 32
+Rows only in test_output: 0
+Rows only in output_df: 0
+Rows with differences: 0
+Empty DataFrame
+Columns: [LocalCell Id, recent_avg_kpi, baseline_avg_kpi, kpi_degradation_ratio_%, ...]
+Index: []
+Number of significant results in test output: 32
+Number of significant results in main output: 32
+\end{lstlisting}
+\newpage
+\subsection{Test Case: TC-002}
+\textbf{Title:} Verify KPI Analysis Using Last Week Baseline 
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Expected Result:} KPI calculations and RCA match exactly .
+    \item \textbf{Actual Observation:} Executed successfully; identified 34 significant degraded cells identically in both implementations .
+\end{itemize}
+
+\begin{lstlisting}
+Missing rows for KPI: DL Traffic, Days: 4, Baseline Mode: last_week:
+Empty DataFrame
+Columns: [LocalCell Id, recent_avg_kpi, baseline_avg_kpi, kpi_degradation_ratio_%, ...]
+Index: []
+Number of significant results in test output: 34
+Number of significant results in main output: 34
+&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+\end{lstlisting}
+
+\end{document}
