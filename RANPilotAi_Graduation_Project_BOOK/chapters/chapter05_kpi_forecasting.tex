@@ -1,4 +1,4 @@
-\chapter{LTE KPI Forecasting Engine}
+\chapter{KPI Forecasting \& Predictive Analytics Module}
 \label{ch:forecasting}
 
 \section{Introduction \& Motivation}
@@ -76,7 +76,7 @@ In addition, the Autocorrelation Function (ACF) of residuals is inspected visual
 
 The forecasting module satisfies the following functional requirements derived from the broader proactive maintenance pipeline:
 
-\begin{enumerate}[label=FR-\arabic*.]
+\begin{enumerate}[FR-1.]
     \item \textbf{Multi-model execution:} Support at least one statistical benchmark (Holt-Winters), one machine-learning model (XGBoost), and naive baselines.
     \item \textbf{Leakage-safe feature engineering:} All predictive features must be computable using only past observations relative to the forecast origin.
     \item \textbf{Automatic model selection:} Compare each candidate against a naive baseline on a hold-out window and recommend the best performer.
@@ -90,7 +90,8 @@ The forecasting module satisfies the following functional requirements derived f
 
 Figure~\ref{fig:architecture} illustrates the internal data flow. The uploaded CSV passes through a loader that coerces percentages and renames raw counters to canonical short names. The seasonality analyzer then decomposes each cell-KPI series via STL and computes a strength score. The feature engineer constructs a leakage-safe design matrix, which is split into training and hold-out sets. The forecasting engine trains all candidate models, evaluates them on the hold-out window, and triggers residual diagnostics for XGBoost. Finally, a report generator assembles an LLM-ready prompt summarizing the results.
 
-\begin{figure}[htbp]
+% --- FIGURE 5.1: Architecture diagram ---
+\begin{figure}[H]
     \centering
     \begin{tikzpicture}[
         node distance=1.4cm and 2.2cm,
@@ -231,7 +232,15 @@ The XGBoost model is trained on the feature matrix described in Section~\ref{sec
     \item \texttt{subsample} $\in [0.5, 1.0]$, default 0.8
 \end{itemize}
 
-Fixed regularization constants are \texttt{colsample\_bytree}=0.8, \texttt{min\_child\_weight}=3, \texttt{reg\_alpha}=0.1, and \texttt{reg\_lambda}=1.0, chosen to combat overfitting given the limited temporal depth of the dataset.
+Fixed regularization constants are \texttt{colsample\_bytree}=0.8, \texttt{min\_child\_weight}=3, \texttt{reg\_alpha}=0.1, and \texttt{reg\_lambda}=1.0, chosen to combat overfitting given the limited temporal depth of the dataset. Figure~\ref{fig:hyperparameters} shows the Streamlit sidebar through which operators adjust these parameters interactively.
+
+% --- FIGURE 5.2: Hyperparameters sidebar ---
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.45\textwidth]{figures/chapter05/image7.png}
+    \caption{Streamlit sidebar exposing XGBoost hyperparameters: \texttt{n\_estimators}=100, \texttt{learning\_rate}=0.05, \texttt{max\_depth}=3, and \texttt{subsample}=0.80.}
+    \label{fig:hyperparameters}
+\end{figure}
 
 For multi-step forecasting, a recursive strategy is employed. Rather than training seven separate one-step models, a single regressor is retrained on the full available history and then iteratively forecasts one day at a time:
 
@@ -263,12 +272,13 @@ After all candidates are evaluated on the hold-out window, the system applies th
     \item Otherwise, promote the winning model and display its metrics alongside the baseline for transparency.
 \end{enumerate}
 
-This protocol ensures that the system does not overstate the value of machine learning when the underlying series is inherently unpredictable or stable. Figure~\ref{fig:metrics_panel} shows the UI presentation of this comparison.
+This protocol ensures that the system does not overstate the value of machine learning when the underlying series is inherently unpredictable or stable. Figure~\ref{fig:metrics_panel} shows the UI presentation of this comparison for cell \texttt{LCAIN10022-6}.
 
-\begin{figure}[htbp]
+% --- FIGURE 5.3: Metrics panel ---
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/chapter05/image3.png}
-    \caption{Dashboard header for cell \texttt{LCAIN10022-6} forecasting DL Traffic Volume. The seasonality strength badge (0.87) and baseline comparison panel confirm that Holt-Winters (MAE 6.352) substantially outperforms the naive baseline (MAE 16.384), validating model deployment for this cell.}
+    \caption{Dashboard header for cell \texttt{LCAIN10022-6} forecasting DL Traffic Volume. The seasonality strength badge ($F_{\text{seasonal}}=0.87$) and baseline comparison panel confirm that Holt-Winters (MAE 6.352) substantially outperforms the naive baseline (MAE 16.384), validating model deployment for this cell.}
     \label{fig:metrics_panel}
 \end{figure}
 
@@ -292,7 +302,8 @@ MAE is robust to outliers and directly interpretable in the original KPI units (
 
 Figure~\ref{fig:forecast_chart} presents a representative forecast visualization. The vertical dashed line separates the training region from the 4-day hold-out test window. Both XGBoost and Holt-Winters are plotted against actuals and the naive baseline, enabling visual inspection of phase alignment, amplitude capture, and bias.
 
-\begin{figure}[htbp]
+% --- FIGURE 5.4: Forecast chart ---
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/chapter05/image2.png}
     \caption{Forecast chart for DL Traffic Volume (GBytes) on cell \texttt{LCAIN10022-6}. The strong weekly seasonality is accurately tracked by Holt-Winters (purple), while XGBoost (red) exhibits larger deviations during the hold-out period. The naive baseline (gray dotted) flatlines at the last training value.}
@@ -311,14 +322,16 @@ For the XGBoost model, in-sample training residuals are subjected to a four-pane
     \item \textbf{Residuals vs.~fitted:} No funnel or systematic pattern should be visible, confirming homoscedasticity.
 \end{itemize}
 
-\begin{figure}[htbp]
+% --- FIGURE 5.5: Residual summary statistics ---
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/chapter05/image5.png}
     \caption{Residual summary statistics for XGBoost on the training set. Mean residual $=$ 0.0027, standard deviation $=$ 0.2397, Durbin-Watson $=$ 1.638 (within acceptable range), and Ljung-Box $p$-value $=$ 0.923 (no significant autocorrelation).}
     \label{fig:residual_summary}
 \end{figure}
 
-\begin{figure}[htbp]
+% --- FIGURE 5.6: Four-panel residual diagnostics ---
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/chapter05/image6.png}
     \caption{Four-panel residual diagnostic plot for XGBoost. Top-left: residuals over time with zero reference; top-right: residual histogram; bottom-left: ACF with 95\% confidence bands; bottom-right: residuals versus fitted values. The absence of structure supports the white-noise hypothesis.}
@@ -329,20 +342,12 @@ For the XGBoost model, in-sample training residuals are subjected to a four-pane
 
 Gain-based feature importance from XGBoost reveals which engineered signals drive predictions. Figure~\ref{fig:feature_importance} displays the top-15 features for the DL Traffic Volume example. The dominance of \texttt{lag7\_norm} and \texttt{lag\_14} confirms that weekly seasonality is the primary predictive signal, while \texttt{momentum\_1} and cross-KPI features such as \texttt{Inter\_HO\_SR} capture secondary dynamics. This interpretability is operationally valuable: if a degradation in handover success rate consistently appears as a top feature for throughput forecasting, it suggests a causal coupling that network engineers can investigate.
 
-\begin{figure}[htbp]
+% --- FIGURE 5.7: Feature importance ---
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.95\textwidth]{figures/chapter05/image4.png}
     \caption{Top-15 XGBoost feature importance by gain for DL Traffic Volume forecasting. \texttt{lag7\_norm} and \texttt{lag\_14} dominate, confirming strong weekly periodicity. Cross-KPI features (\texttt{Inter\_HO\_SR}, \texttt{Avg\_UE\_Number}) and momentum terms contribute non-linear explanatory power.}
     \label{fig:feature_importance}
-\end{figure}
-
-Figure~\ref{fig:hyperparameters} shows the sidebar control panel through which operators adjust XGBoost hyperparameters. The conservative defaults (low \texttt{max\_depth}, moderate \texttt{learning\_rate}, subsampling) reflect the small-data regime and can be tuned per cell based on residual diagnostics.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.45\textwidth]{figures/chapter05/image7.png}
-    \caption{Streamlit sidebar exposing XGBoost hyperparameters: \texttt{n\_estimators}=100, \texttt{learning\_rate}=0.05, \texttt{max\_depth}=3, and \texttt{subsample}=0.80.}
-    \label{fig:hyperparameters}
 \end{figure}
 
 
