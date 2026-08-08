@@ -76,7 +76,7 @@ In addition, the Autocorrelation Function (ACF) of residuals is inspected visual
 
 The forecasting module satisfies the following functional requirements derived from the broader proactive maintenance pipeline:
 
-\begin{enumerate}[FR-1.]
+\begin{enumerate}[label=FR-\arabic*.]
     \item \textbf{Multi-model execution:} Support at least one statistical benchmark (Holt-Winters), one machine-learning model (XGBoost), and naive baselines.
     \item \textbf{Leakage-safe feature engineering:} All predictive features must be computable using only past observations relative to the forecast origin.
     \item \textbf{Automatic model selection:} Compare each candidate against a naive baseline on a hold-out window and recommend the best performer.
