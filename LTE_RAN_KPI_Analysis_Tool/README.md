@@ -83,7 +83,7 @@ Our analyzer implements a **three-layer analytical pipeline**:
 |---------|-------------|
 | **13 KPI Categories** | Traffic, Integrity, Accessibility, Retainability, Mobility, Availability, CSFB, VoLTE, RRC Re-establishment |
 | **142 Detection Rules** | Correlated counter analysis with configurable thresholds |
-| **2 Baseline Modes** | Last-week parallel, 4-week rolling average |
+| **2 Baseline Modes** | Last-week parallel, Median value of  N-week |
 | **Advisory Statistical Evidence** | Welch's t-test with p-value reporting; no longer blocks severe threshold-based degradation |
 | **Confidence & Severity Labels** | `rf_severity`, `analysis_confidence`, and explainable confidence reasons |
 | **Data Quality Engine** | Unit validation, sentinel detection, baseline imputation used in day-by-day comparison |
@@ -252,7 +252,7 @@ Welch's t-test is now treated as **advisory evidence**. A cell is not hidden jus
 | Mode | Description | Use Case |
 | |-------------|----------|
 | **Last Week** | Same N days from previous week | Detecting sudden incidents |
-| **4-Week Rolling** | Median of same weekdays over 4 weeks | Smoothing weekly patterns |
+| **4-Week Rolling** | Median of same weekdays over N weeks | Smoothing weekly patterns |
 
 ### 3.3 Statistical Significance Testing
 
@@ -352,20 +352,20 @@ The system distinguishes three baseline states:
 The resolution rules are centralized in `data_quality.py`:
 
 **For ratio KPIs:**
-| Baseline | Recent | Resolution |
-|----------|--------|------------|
+| Baseline | Recent | Resolution    |
+|----------|--------|------------   |
 | NaN      | Any    | History → Min |
-| 0        | >0     | Keep 0 |
-| 0        | 0      | History → Min* |
-| >0       | Any    | Use baseline |
+| 0        | >0     | Keep 0        |
+| 0        | 0      | History → Min*|
+| >0       | Any    | Use baseline  |
 
 **For non-ratio KPIs:**
-| Baseline | Recent | Resolution |
-|----------|--------|------------|
+| Baseline | Recent | Resolution    |
+|----------|--------|------------   |
 | NaN      | Any    | History → Min |
-| 0        | >0     | Keep 0 (Normal) |
+| 0        | >0     | Keep 0(Normal)|
 | 0        | 0      | History → Min |
-| >0       | Any    | Use baseline |
+| >0       | Any    | Use baseline  |
 
 `* Exception: E-RAB Drop Rate has `use_historical_fallback: False`, so 0→0 stays as Normal (0%).`
 
