@@ -82,4 +82,4 @@ OUTPUT/
 *.lock
 *.synctex.*
 *.nav
-*.snm
+main.synctex(busy)

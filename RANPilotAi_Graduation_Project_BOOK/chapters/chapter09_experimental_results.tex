@@ -1,43 +1,12 @@
 \chapter{Testing Strategy}
 
-\documentclass[11pt,a4paper]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb}
-\usepackage{booktabs}
-\usepackage{tabularx}
-\usepackage{pifont}
-\usepackage{tikz}
-\usepackage{xcolor}
-\usepackage{enumitem}
-\usepackage{listings}
-
-\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
-
-\definecolor{codebg}{gray}{0.95}
-
-\lstset{
-  backgroundcolor=\color{codebg},
-  basicstyle=\ttfamily\small,
-  breaklines=true,
-  frame=single,
-  framerule=0pt,
-  columns=fullflexible
-}
-
-\title{\textbf{LTE RAN KPI Analysis Tool -- Test Plan}}
-
-\date{\today}
-
-\begin{document}
-
 \section{Introduction}
 \subsection{Purpose}
 This document defines the complete testing strategy for the LTE RAN KPI Analysis Tool. The objective is to verify that every module performs according to its functional requirements while ensuring correctness of KPI degradation calculations, root cause analysis (RCA), anomaly detection, dashboard preparation, and report generation.
 
 
 \begin{itemize}[leftmargin=*]
-    \textbf{\item {The test plan validate:}}
+    \item \textbf{The test plan validate:}
     \item Functional correctness
     \item Statistical correctness
     \item Data quality handling
@@ -132,8 +101,6 @@ TC-027 & Insufficient samples & Small sample size & Limited observations & Test 
 \end{tabularx}
 \end{center}
 
-\clearpage
-
 \begin{center}
 \small
 \begin{tabularx}{\textwidth}{l X X X X}
@@ -187,7 +154,7 @@ Large KPI values & Stable \\
 \end{table}
 
 \section{Negative Testing}
-\begin{itemize}[leftmargin=*, grid]
+\begin{itemize}[leftmargin=*]
     \item Missing KPI column / Cell ID / Site Name / Cell Name / Local Cell ID
     \item Wrong date format
     \item Duplicate rows
@@ -248,11 +215,11 @@ The framework uses a modular architecture where each module validates one part o
 
 \begin{verbatim}
 testing.py
-├── test_helper_functions.py      (Helper and utility function testing)
-├── test_fallback_functions.py    (Baseline fallback algorithm testing)
-├── test_main_cause_functions.py  (Root cause analysis testing)
-├── test_main_testing_function.py (Independent KPI analysis)
-└── test_compare_functions.py     (Comparison against production output)
+|- test_helper_functions.py      (Helper and utility function testing)
+|- test_fallback_functions.py    (Baseline fallback algorithm testing)
+|- test_main_cause_functions.py  (Root cause analysis testing)
+|- test_main_testing_function.py (Independent KPI analysis)
+\- test_compare_functions.py     (Comparison against production output)
 \end{verbatim}
 
 \subsection{Workflow Diagram}
@@ -363,4 +330,4 @@ Number of significant results in main output: 34
 &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
 \end{lstlisting}
 
-\end{document}
+
