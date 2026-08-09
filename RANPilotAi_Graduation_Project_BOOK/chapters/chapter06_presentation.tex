@@ -155,46 +155,6 @@
     \end{itemize}
 \end{frame}
 
-\begin{frame}{Rolling Evaluation Window}
-    \texttt{resolve\_eval\_window()} determines the ``After'' period:
-    \begin{itemize}
-        \item Starts on the hunk's date
-        \item Ends at \emph{today} or the day before the \emph{next}
-              hunk --- whichever is earlier
-        \item \textbf{``Ignore Next Action Hunk''} toggle overrides the
-              cap
-    \end{itemize}
-\end{frame}
-
-\begin{frame}{Weekday-Matched Baseline Construction}
-    \texttt{collect\_matching\_weekdays()}:
-    \begin{enumerate}
-        \item Match each After-window date to the same weekday exactly
-              \textbf{7 days earlier}
-        \item Average KPI values across all matching dates, by
-              minute-of-day
-        \item Align Before/After profiles to a common minute-of-day
-              index
-    \end{enumerate}
-    \vspace{0.3em}
-    \small \texttt{collect\_individual\_days()} preserves the same
-    matching logic without averaging, grouped by weekday.
-\end{frame}
-
-\begin{frame}{Optimization Polarity}
-    \begin{itemize}
-        \item Each KPI is either \texttt{"higher"} or \texttt{"lower"}
-              is better
-        \item Inferred automatically from keywords (\texttt{drop},
-              \texttt{error}, \texttt{latency}, \texttt{bler},
-              \texttt{retry} $\Rightarrow$ lower is better)
-        \item Editable in the sidebar, persisted to
-              \texttt{kpi\_config.json}
-        \item Drives colour-coding across the delta chart and summary
-              table
-    \end{itemize}
-\end{frame}
-
 % ══════════════════════════════════════════════════════════
 \section{Visualization Layer}
 
@@ -260,38 +220,6 @@
               verdict for every KPI at once
     \end{enumerate}
 \end{frame}
-
-% ══════════════════════════════════════════════════════════
-\section{Technology Stack}
-
-\begin{frame}{Technology Stack}
-    \begin{tabular}{@{}ll@{}}
-        \toprule
-        \textbf{Layer} & \textbf{Technology} \\
-        \midrule
-        Database                  & Dolt (version-controlled MySQL-compatible) \\
-        Database connector        & PyMySQL \\
-        Data processing           & pandas, NumPy \\
-        Visualization              & Plotly \\
-        Web application / UI       & Streamlit \\
-        Configuration persistence  & JSON (\texttt{kpi\_config.json}) \\
-        \bottomrule
-    \end{tabular}
-\end{frame}
-
-% ══════════════════════════════════════════════════════════
-\section{Design Highlights}
-
-\begin{frame}{Design Highlights}
-    \begin{itemize}
-        \item Version control \textbf{as} the audit trail
-        \item Seasonality-aware statistics (weekday matching)
-        \item Automatic evaluation-window boundary detection
-        \item Zero-configuration KPI discovery
-        \item Graceful degradation via mock-data mode
-    \end{itemize}
-\end{frame}
-
 
 % ══════════════════════════════════════════════════════════
 \section{Summary}
