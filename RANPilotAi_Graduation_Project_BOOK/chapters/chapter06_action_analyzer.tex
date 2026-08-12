@@ -374,8 +374,10 @@ Figure~\ref{fig:workflow} and summarised below.
         tiles.
 \end{enumerate}
 
+
 \section{Technology Stack}
-\begin{table}[htbp]
+
+\begin{table}[H] % [H] forces the table to stay directly under the section heading
     \centering
     \caption{Technologies used in the Optimization Action Analyzer}
     \label{tab:stack}
@@ -383,11 +385,11 @@ Figure~\ref{fig:workflow} and summarised below.
         \toprule
         \textbf{Layer} & \textbf{Technology} \\
         \midrule
-        Database              & Dolt (version-controlled MySQL-compatible SQL server) \\
-        Database connector    & PyMySQL \\
-        Data processing        & pandas, NumPy \\
-        Visualization          & Plotly (\texttt{plotly.graph\_objects}) \\
-        Web application / UI   & Streamlit \\
+        Database                 & Dolt (version-controlled MySQL-compatible SQL server) \\
+        Database connector      & PyMySQL \\
+        Data processing          & pandas, NumPy \\
+        Visualization            & Plotly (\texttt{plotly.graph\_objects}) \\
+        Web application / UI     & Streamlit \\
         Configuration persistence & JSON (\texttt{kpi\_config.json}) \\
         \bottomrule
     \end{tabular}
