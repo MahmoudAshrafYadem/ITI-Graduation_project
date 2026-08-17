@@ -9,7 +9,6 @@ Charts:
 """
 
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
@@ -177,8 +176,12 @@ def plot_action_timeline(hunks: list[dict]) -> go.Figure:
             text=[str(c) for c in counts],
             textfont=dict(color=NAVY, size=9, family=FONT),
             textposition="middle center",
-            hovertemplate="%{customdata}<extra></extra>",
-            customdata=hover_texts,
+            # Keep selection metadata separate from hover text. Using
+            # hovertext avoids Plotly dropping very large customdata
+            # strings for hunks containing several commits.
+            hovertext=hover_texts,
+            hovertemplate="%{hovertext}<extra></extra>",
+            customdata=[[i, h["label"]] for i, h in enumerate(hunks)],
             name="Action Hunk",
         )
     )
@@ -186,7 +189,7 @@ def plot_action_timeline(hunks: list[dict]) -> go.Figure:
     fig.update_layout(
         **_base_layout(
             title=dict(
-                text="Action Hunk Distribution — hover for commit details",
+                text="Action Hunk Distribution — click to select · hover for details",
                 font=dict(color=CYAN, size=13, family=FONT),
                 x=0,
             ),
@@ -217,7 +220,7 @@ def plot_kpi_trend(
     before_dates: list[str],
     commits_in_window: list[dict] | None = None,
     time_range: tuple[int, int] | None = None,
-    show_ma: bool = True,
+    show_ma: bool = False,
 ) -> go.Figure:
     """
     Dual-line overlay of averaged Before and After profiles.
@@ -228,10 +231,9 @@ def plot_kpi_trend(
                             Each dict must have 'date' and optionally 'message'.
         time_range        : (start_minute, end_minute) 0-1439 tuple to slice x-axis.
                             If None, the full day is shown.
-        show_ma           : when False, omit the dotted moving-average trace so
-                            exactly two lines (Before, After) are drawn — used
-                            for simple before/after comparisons (e.g. the most
-                            recent action with an open-ended evaluation window).
+        show_ma           : deprecated compatibility argument. It is ignored so
+                            the chart always contains exactly two line traces:
+                            Before action and After action.
     """
     # ── Apply time range slice ──────────────────────────────────────
     if time_range:
@@ -256,7 +258,7 @@ def plot_kpi_trend(
             x=x_ticks,
             y=before_df[kpi].round(4),
             mode="lines",
-            name=f"Before  ({before_label})",
+            name=f"Before action  ({before_label})",
             line=dict(color=MUTED, width=1.8, dash="dash"),
             hovertemplate=f"<b>Before</b><br>Time: %{{x}}<br>{kpi}: %{{y:.4f}}<extra></extra>",
         )
@@ -266,27 +268,13 @@ def plot_kpi_trend(
             x=x_ticks,
             y=after_df[kpi].round(4),
             mode="lines",
-            name=f"After   ({after_label})",
+            name=f"After action   ({after_label})",
             line=dict(color=CYAN, width=2.5),
             fill="tonexty",
             fillcolor=CYAN_SOFT,
             hovertemplate=f"<b>After</b><br>Time: %{{x}}<br>{kpi}: %{{y:.4f}}<extra></extra>",
         )
     )
-
-    if show_ma:
-        window = max(4, len(after_df) // 24)
-        ma = after_df[kpi].rolling(window=window, center=True).mean()
-        fig.add_trace(
-            go.Scatter(
-                x=x_ticks,
-                y=ma.round(4),
-                mode="lines",
-                name=f"MA({window}) After",
-                line=dict(color=AMBER, width=1.2, dash="dot"),
-                hovertemplate=f"<b>Moving Avg</b><br>Time: %{{x}}<br>{kpi}: %{{y:.4f}}<extra></extra>",
-            )
-        )
 
     # ── Commit annotations as vertical lines on the x-axis ─────────
     # Each commit is anchored at its own actual hour:minute, snapped to
@@ -575,9 +563,24 @@ def plot_delta_bars(
     after_df: pd.DataFrame,
     kpi: str,
     polarity: str,  # "lower" | "higher"
+    time_range: tuple[int, int] | None = None,
 ) -> go.Figure:
     """Bar chart of (After − Before) per interval, colour-coded by polarity."""
-    delta = (after_df[kpi] - before_df[kpi]).round(4)
+    if time_range:
+        start_m, end_m = time_range
+        before_df = before_df.loc[
+            (before_df.index >= start_m) & (before_df.index <= end_m)
+        ]
+        after_df = after_df.loc[
+            (after_df.index >= start_m) & (after_df.index <= end_m)
+        ]
+
+    if before_df.empty or after_df.empty or kpi not in before_df.columns or kpi not in after_df.columns:
+        return go.Figure()
+
+    delta = (after_df[kpi] - before_df[kpi]).dropna().round(4)
+    if delta.empty:
+        return go.Figure()
     x_ticks = [_hhmm(m) for m in delta.index]
 
     def _color(d: float) -> str:
@@ -626,10 +629,13 @@ def plot_delta_bars(
         align="left",
     )
 
+    title_suffix = (
+        f"  ·  {_hhmm(time_range[0])}–{_hhmm(time_range[1])}" if time_range else ""
+    )
     fig.update_layout(
         **_base_layout(
             title=dict(
-                text=f"Interval Delta (After − Before) — {kpi}",
+                text=f"Interval Delta (After − Before) — {kpi}{title_suffix}",
                 font=dict(color=CYAN, size=13, family=FONT),
                 x=0,
             ),

@@ -29,6 +29,7 @@ import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta, date
 import warnings
+import re
 
 # ══════════════════════════════════════════════════════════════════════
 #  CONNECTION CONFIGURATION  ← plug your Dolt server details here
@@ -366,13 +367,40 @@ def discover_parameters(conn) -> dict[str, dict]:
     return PARAMETER_CATALOG
 
 
+def _quote_identifier(identifier: str) -> str:
+    """Safely quote an internal table/column identifier for MySQL."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier or ""):
+        raise ValueError(f"Unsafe SQL identifier: {identifier!r}")
+    return f"`{identifier}`"
+
+
+def _values_equal(left, right) -> bool:
+    """Compare config values without false mismatches like 4 vs '4.0'."""
+    if left is None or right is None:
+        return left is right
+    try:
+        return bool(np.isclose(float(left), float(right), rtol=1e-9, atol=1e-12))
+    except (TypeError, ValueError):
+        return str(left).strip() == str(right).strip()
+
+
 def get_current_param_value(conn, cell_id: str, parameter: str):
     if conn == "MOCK":
         state = _load_state()
         return state["param_values"].get(cell_id, {}).get(
             parameter, PARAMETER_CATALOG.get(parameter, {}).get("default")
         )
-    return None  # real-DB lookup would SELECT the live config table
+
+    meta = PARAMETER_CATALOG.get(parameter)
+    if not meta:
+        return None
+    table = _quote_identifier(meta.get("table", "network_config"))
+    column = _quote_identifier(parameter)
+    query = f"SELECT {column} AS current_value FROM {table} WHERE cell_id = %s LIMIT 1"
+    with conn.cursor() as cur:
+        cur.execute(query, (cell_id,))
+        row = cur.fetchone()
+    return row.get("current_value") if row else None
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -495,11 +523,14 @@ def commit_action(
     when = when or datetime.now()
     if conn == "MOCK":
         state = _load_state()
-        from_val = str(
-            state["param_values"].get(cell_id, {}).get(
-                parameter, PARAMETER_CATALOG.get(parameter, {}).get("default", "—")
-            )
+        from_value = state["param_values"].get(cell_id, {}).get(
+            parameter, PARAMETER_CATALOG.get(parameter, {}).get("default", "—")
         )
+        if _values_equal(from_value, new_value):
+            raise ValueError(
+                f"No-op commit rejected: {parameter} on {cell_id} is already {from_value}."
+            )
+        from_val = str(from_value)
         commit = {
             "commit_hash": _new_hash(),
             "committer": committer,
@@ -520,12 +551,24 @@ def commit_action(
         return commit
 
     # Real Dolt path (adapt table name via PARAMETER_CATALOG)
-    table = PARAMETER_CATALOG.get(parameter, {}).get("table", "network_config")
+    current_value = get_current_param_value(conn, cell_id, parameter)
+    if _values_equal(current_value, new_value):
+        raise ValueError(
+            f"No-op commit rejected: {parameter} on {cell_id} is already {current_value}."
+        )
+
+    table = _quote_identifier(PARAMETER_CATALOG.get(parameter, {}).get("table", "network_config"))
+    column = _quote_identifier(parameter)
     with conn.cursor() as cur:
         cur.execute(
-            f"UPDATE {table} SET {parameter} = %s WHERE cell_id = %s",
+            f"UPDATE {table} SET {column} = %s WHERE cell_id = %s",
             (new_value, cell_id),
         )
+        if cur.rowcount == 0:
+            conn.rollback()
+            raise ValueError(
+                f"No commit created: the update did not change any {table} rows for {cell_id}."
+            )
         cur.execute("SELECT DOLT_COMMIT('-am', %s) AS hash", (message,))
         row = cur.fetchone()
     conn.commit()
@@ -661,20 +704,27 @@ def advance_due_sweeps(conn) -> list[dict]:
                 continue
             sched = datetime.strptime(step["scheduled_date"], "%Y-%m-%d").date()
             if sched <= today:
-                commit = commit_action(
-                    conn,
-                    cell_id=sweep["cell_id"],
-                    parameter=sweep["parameter"],
-                    new_value=step["value"],
-                    message=f"Parameter sweep step {step['index'] + 1}/{sweep['n_steps']}: "
-                    f"{sweep['parameter']} → {step['value']}",
-                    committer=sweep["committer"],
-                    email=sweep["email"],
-                    optimizer="Parameter Sweep Engine",
-                    action_type="Parameter Sweep Step",
-                )
+                try:
+                    commit = commit_action(
+                        conn,
+                        cell_id=sweep["cell_id"],
+                        parameter=sweep["parameter"],
+                        new_value=step["value"],
+                        message=f"Parameter sweep step {step['index'] + 1}/{sweep['n_steps']}: "
+                        f"{sweep['parameter']} → {step['value']}",
+                        committer=sweep["committer"],
+                        email=sweep["email"],
+                        optimizer="Parameter Sweep Engine",
+                        action_type="Parameter Sweep Step",
+                    )
+                    step["commit_hash"] = commit["commit_hash"]
+                    step["skip_reason"] = None
+                except ValueError as exc:
+                    # A no-op sweep step must not create an empty commit or
+                    # retry forever on every app load.
+                    step["commit_hash"] = None
+                    step["skip_reason"] = str(exc)
                 step["executed"] = True
-                step["commit_hash"] = commit["commit_hash"]
                 step["executed_date"] = today.strftime("%Y-%m-%d")
                 step["kpi_score"] = round(
                     _score_for_step(sweep["cell_id"], sweep["parameter"], step["value"]), 4

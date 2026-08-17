@@ -9,15 +9,16 @@ Architecture:
   - data.py      → Pandas wrangling, hunk logic, matching engine
   - viz.py       → Plotly chart builders
   - app.py       → Streamlit UI orchestration (this file)
-  - config.py    → Persistent KPI polarity config management
+  - config.py    → Persistent polarity, relationship, and grouping config
 
 To connect to a real Dolt instance, update DB_CONFIG in db.py.
 """
 
+import json
+
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 
 # ── Local modules ──────────────────────────────────────────────────────
 from db import (
@@ -43,13 +44,11 @@ from data import (
     filter_log_df,
     compare_actions,
     resolve_eval_window,
-    collect_matching_weekdays,
-    collect_individual_days,
+    collect_comparison_periods,
 )
 from viz import (
     plot_action_timeline,
     plot_kpi_trend,
-    plot_kpi_trend_individual,
     plot_delta_bars,
     plot_action_comparison,
     build_summary_table,
@@ -221,6 +220,69 @@ def _get_parameters(_conn):
     return discover_parameters(_conn)
 
 
+# ── Shared formatting / selection-event helpers ───────────────────────
+
+def _fmt_minutes(minute_of_day: int) -> str:
+    hours, minutes = divmod(int(minute_of_day), 60)
+    return f"{hours:02d}:{minutes:02d}"
+
+
+def _minutes_from_hhmm(value: str) -> int:
+    hours, minutes = value.split(":", 1)
+    return int(hours) * 60 + int(minutes)
+
+
+def _as_mapping(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "to_dict"):
+        try:
+            converted = value.to_dict()
+            if isinstance(converted, dict):
+                return converted
+        except Exception:
+            pass
+    if hasattr(value, "__dict__"):
+        return dict(value.__dict__)
+    return {}
+
+
+def _selection_payload(event) -> dict:
+    """Normalize Streamlit chart/dataframe selection events to a dict."""
+    if event is None:
+        return {}
+    event_map = _as_mapping(event)
+    selection = event_map.get("selection", {})
+    selection_map = _as_mapping(selection)
+    if selection_map:
+        return selection_map
+    return selection if isinstance(selection, dict) else {}
+
+
+def _selection_signature(payload: dict) -> str:
+    return json.dumps(payload, sort_keys=True, default=str)
+
+
+def _plotly_selected_points(event) -> list[dict]:
+    points = _selection_payload(event).get("points") or []
+    normalized = []
+    for point in points:
+        point_map = _as_mapping(point)
+        if not point_map:
+            continue
+        curve = point_map.get("curve_number", point_map.get("curveNumber"))
+        # Trace 0 is the decorative connector; trace 1 is the hunk marker.
+        if curve not in (None, 1):
+            continue
+        normalized.append(point_map)
+    return normalized
+
+
+def _dataframe_selected_rows(event) -> list[int]:
+    rows = _selection_payload(event).get("rows") or []
+    return [int(row) for row in rows]
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  SIDEBAR — CONFIG + KPI POLARITY
 # ══════════════════════════════════════════════════════════════════════
@@ -235,7 +297,7 @@ def render_sidebar(
     saved_param_groups: dict[str, list[str]],
 ):
     """
-    Renders polarity controls loaded from kpi_config.json, plus editors
+    Renders polarity controls loaded from config.json, plus editors
     for parameter⇄KPI relationships, KPI groups, and parameter groups.
     Detects changes and offers Save buttons per section.
 
@@ -263,7 +325,7 @@ def render_sidebar(
             unsafe_allow_html=True,
         )
         st.caption(
-            "Loaded from `kpi_config.json`. Edit here and click **Save** "
+            "Loaded from `config.json`. Edit here and click **Save** "
             "to persist across restarts."
         )
 
@@ -388,8 +450,8 @@ def render_sidebar(
         st.markdown("---")
         st.markdown("<div class='section-header'>About</div>", unsafe_allow_html=True)
         st.caption(
-            "Rolling evaluation window compared against aggregated "
-            "same-weekday baselines. Commit hunks grouped by calendar date."
+            "N-week evaluation window compared against the same available "
+            "span immediately before the action. Commit hunks grouped by date."
         )
 
     return current_polarity
@@ -570,7 +632,11 @@ def main():
             "Action Type", options=sorted(log_df_full.get("action_type", pd.Series(dtype=str)).dropna().unique())
         )
     with fc5:
-        f_search = st.text_input("Search message / committer / parameter")
+        f_search = st.text_input(
+            "Search message / committer / parameter",
+            placeholder="Fuzzy search — spaces mean OR",
+            help="Matches partial or near-spelled terms across commit metadata. Example: 'tilt power ali'.",
+        )
 
     log_df = filter_log_df(
         log_df_full,
@@ -603,22 +669,85 @@ def main():
         "<div class='section-header'>① Action Timeline — Commit Hunk Distribution</div>",
         unsafe_allow_html=True,
     )
+    hunk_labels = [h["label"] for h in hunks]
+    if st.session_state.get("hunk_selector") not in hunk_labels:
+        st.session_state["hunk_selector"] = hunk_labels[-1]
+
     fig_timeline = plot_action_timeline(hunks)
-    st.plotly_chart(fig_timeline, width="stretch")
-    st.caption("Hover over a marker to see committer, timestamp, and message details.")
+    timeline_event = st.plotly_chart(
+        fig_timeline,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="points",
+        key="action_timeline_chart",
+    )
+    st.caption("Click a hunk marker to select it; hover for full commit details.")
+
+    timeline_payload = _selection_payload(timeline_event)
+    timeline_signature = _selection_signature(timeline_payload)
+    if timeline_payload.get("points") and timeline_signature != st.session_state.get("_timeline_selection_sig"):
+        st.session_state["_timeline_selection_sig"] = timeline_signature
+        for point in _plotly_selected_points(timeline_event):
+            customdata = point.get("customdata")
+            hunk_idx = None
+            if isinstance(customdata, (list, tuple)) and customdata:
+                try:
+                    hunk_idx = int(customdata[0])
+                except (TypeError, ValueError):
+                    hunk_idx = None
+            if hunk_idx is None:
+                point_idx = point.get("point_index", point.get("pointIndex"))
+                if point_idx is not None:
+                    hunk_idx = int(point_idx)
+            if hunk_idx is not None and 0 <= hunk_idx < len(hunks):
+                clicked_hunk = hunks[hunk_idx]
+                st.session_state["hunk_selector"] = clicked_hunk["label"]
+                if clicked_hunk.get("commits"):
+                    st.session_state["selected_commit_hash"] = clicked_hunk["commits"][-1].get("commit_hash")
+                break
 
     with st.expander("📋 Browse commits (sortable / searchable table)", expanded=False):
-        browse_df = log_df.copy()
+        table_search = st.text_input(
+            "Search table (fuzzy; spaces mean OR)",
+            key="commit_table_search",
+            placeholder="e.g. tilt power CELL_001",
+        )
+        browse_df = filter_log_df(log_df, search_text=table_search or None)
         cols_order = [
             c for c in ["date", "cell_id", "cell_group", "action_type", "optimizer",
                         "committer", "parameter", "from_val", "to_val", "message", "commit_hash"]
             if c in browse_df.columns
         ]
-        st.dataframe(
-            browse_df[cols_order].sort_values("date", ascending=False),
+        browse_display = (
+            browse_df[cols_order]
+            .sort_values("date", ascending=False)
+            .reset_index(drop=True)
+        )
+        browse_event = st.dataframe(
+            browse_display,
             width="stretch",
             height=320,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="commit_browser_table",
         )
+        st.caption("Click a row to select the commit's action hunk for analysis.")
+
+        browse_payload = _selection_payload(browse_event)
+        browse_signature = _selection_signature(browse_payload)
+        selected_rows = _dataframe_selected_rows(browse_event)
+        if selected_rows and browse_signature != st.session_state.get("_commit_browser_sig"):
+            st.session_state["_commit_browser_sig"] = browse_signature
+            row_idx = selected_rows[0]
+            if 0 <= row_idx < len(browse_display):
+                selected_row = browse_display.iloc[row_idx]
+                selected_commit_hash = selected_row.get("commit_hash")
+                selected_date = str(selected_row.get("date", ""))[:10]
+                matching_hunk = next((h for h in hunks if h["date"] == selected_date), None)
+                if matching_hunk:
+                    st.session_state["hunk_selector"] = matching_hunk["label"]
+                    st.session_state["selected_commit_hash"] = selected_commit_hash
 
     st.markdown("---")
 
@@ -630,21 +759,40 @@ def main():
         unsafe_allow_html=True,
     )
 
-    col_hunk, col_kpi, col_toggle = st.columns([2, 2, 1])
+    col_hunk, col_kpi, col_weeks, col_toggle = st.columns([2, 2, 1, 1])
 
     with col_hunk:
-        hunk_labels = [h["label"] for h in hunks]
         selected_label = st.selectbox(
             "Action Hunk (grouped by calendar date)",
             options=hunk_labels,
-            index=len(hunk_labels) - 1,
+            key="hunk_selector",
         )
         selected_hunk = next(h for h in hunks if h["label"] == selected_label)
         action_date = selected_hunk["date"]
-        is_last_hunk = selected_hunk is hunks[-1]
+        selected_commit_hash = st.session_state.get("selected_commit_hash")
+        selected_commit = next(
+            (c for c in selected_hunk["commits"] if c.get("commit_hash") == selected_commit_hash),
+            None,
+        )
+        if selected_commit:
+            st.caption(
+                f"Selected commit: `{str(selected_commit_hash)[:8]}` · "
+                f"{selected_commit.get('parameter', '—')}"
+            )
 
     with col_kpi:
-        selected_kpi = st.selectbox("KPI to analyse", options=kpi_columns)
+        current_kpi = st.session_state.get("selected_kpi")
+        if current_kpi not in kpi_columns:
+            current_kpi = kpi_columns[0]
+            st.session_state["selected_kpi"] = current_kpi
+        kpi_selector_nonce = int(st.session_state.get("kpi_selector_nonce", 0))
+        selected_kpi = st.selectbox(
+            "KPI to analyse",
+            options=kpi_columns,
+            index=kpi_columns.index(current_kpi),
+            key=f"kpi_selector_{kpi_selector_nonce}",
+        )
+        st.session_state["selected_kpi"] = selected_kpi
         polarity_label = (
             "↓ Lower is Better"
             if polarity_map[selected_kpi] == "lower"
@@ -656,20 +804,40 @@ def main():
             unsafe_allow_html=True,
         )
 
+    with col_weeks:
+        comparison_weeks = int(
+            st.number_input(
+                "Comparison weeks",
+                min_value=1,
+                max_value=12,
+                value=1,
+                step=1,
+                key="comparison_weeks",
+                help=(
+                    "Request N weeks after the action and N weeks before it. "
+                    "If the next action, today, or available history truncates "
+                    "the window, the same available span is used on both sides."
+                ),
+            )
+        )
+
     with col_toggle:
         st.markdown("<br>", unsafe_allow_html=True)
         ignore_next = st.checkbox(
             "Ignore Next Action Hunk",
             value=False,
             help=(
-                "When checked, the evaluation window extends to today even if "
-                "a later hunk exists, bypassing the automatic commit boundary cap."
+                "When checked, the requested week window is capped only by "
+                "today, bypassing the automatic commit boundary cap."
             ),
         )
 
-    # ── Resolve the rolling evaluation window ─────────────────────────
+    # ── Resolve the requested N-week evaluation window ────────────────
     after_start, after_end, next_hunk_date = resolve_eval_window(
-        hunks, action_date, ignore_next_hunk=ignore_next
+        hunks,
+        action_date,
+        ignore_next_hunk=ignore_next,
+        comparison_weeks=comparison_weeks,
     )
 
     # ── Info tiles ────────────────────────────────────────────────────
@@ -708,11 +876,10 @@ def main():
     # ── Metadata HUD (Feature 3) ───────────────────────────────────────
     render_hunk_hud(selected_hunk, conn)
 
-    # ── Fetch KPI data covering baseline window + after window ─────────
-    # Baseline needs data 7 days before after_start (earliest possible)
-
+    # ── Fetch KPI data covering the full N-week baseline + After window ─
     fetch_start = (
-        datetime.strptime(after_start, "%Y-%m-%d") - timedelta(days=7)
+        datetime.strptime(action_date, "%Y-%m-%d")
+        - timedelta(days=comparison_weeks * 7)
     ).strftime("%Y-%m-%d")
 
     try:
@@ -740,9 +907,9 @@ def main():
         )
         st.stop()
 
-    # ── Aggregate matching weekdays (Feature 2) ────────────────────────
+    # ── Aggregate the available Before / After comparison periods ──────
     try:
-        before_df, after_df, after_dates, before_dates = collect_matching_weekdays(
+        before_df, after_df, after_dates, before_dates = collect_comparison_periods(
             kpi_df, after_start, after_end
         )
     except Exception as exc:
@@ -751,8 +918,8 @@ def main():
 
     if before_df.empty:
         st.markdown(
-            f"<div class='alert-warn'>⚠️ No baseline data found for the matching "
-            f"weekdays before <b>{after_start}</b>.</div>",
+            f"<div class='alert-warn'>⚠️ No baseline data found in the available "
+            f"period before <b>{after_start}</b>.</div>",
             unsafe_allow_html=True,
         )
         st.stop()
@@ -768,11 +935,18 @@ def main():
     # Window summary line
     n_after = len(after_dates)
     n_before = len([d for d in before_dates if d])
+    actual_span_days = (
+        datetime.strptime(after_dates[-1], "%Y-%m-%d")
+        - datetime.strptime(after_dates[0], "%Y-%m-%d")
+    ).days + 1
+    available_weeks = actual_span_days / 7
     st.markdown(
         f"<div class='alert-info'>"
-        f"Evaluation window: <b>{after_start}</b> → <b>{after_end}</b>  ·  "
-        f"<b>{n_after}</b> After day(s) averaged against "
-        f"<b>{n_before}</b> matching Before day(s)</div>",
+        f"Requested comparison: <b>{comparison_weeks}</b> week(s) before vs after. "
+        f"Using the available <b>{actual_span_days}</b>-day span "
+        f"(≈ <b>{available_weeks:.1f}</b> week(s)) on each side: "
+        f"<b>{after_dates[0]}</b> → <b>{after_dates[-1]}</b>, averaged against "
+        f"<b>{n_before}</b> available Before day(s) and <b>{n_after}</b> After day(s).</div>",
         unsafe_allow_html=True,
     )
 
@@ -787,187 +961,47 @@ def main():
     )
 
     # ── Controls row ──────────────────────────────────────────────────
-    ctrl_a, ctrl_b, ctrl_c = st.columns([3, 2, 2])
+    ctrl_a, ctrl_b, ctrl_c = st.columns([3, 1, 1])
 
     with ctrl_a:
-        # Time-range slider — full day by default, constrained by commit caps
-        # Show available window as [after_start 00:00 … after_end 23:59]
-        # expressed in minutes-of-day since we only visualise a single day's
-        # profile (minute_of_day 0-1439).
-        time_range_vals = st.slider(
-            "Time-of-day range",
-            min_value=0,
-            max_value=1439,
-            value=(0, 1439),
-            step=15,
-            format="%d min",
+        time_options = [_fmt_minutes(m) for m in range(0, 1440, 15)] + ["23:59"]
+        time_range_labels = st.select_slider(
+            "Time-of-day range (hours : minutes)",
+            options=time_options,
+            value=("00:00", "23:59"),
+            key="time_of_day_range_hhmm",
             help=(
-                "Restrict the x-axis to a sub-window of the day (0–1439 min).  "
-                "Commit boundaries cap what window is available."
+                "Choose the start and end time directly in HH:MM. "
+                "The KPI trend and interval-delta chart both use this range."
             ),
         )
-
-        # Format as HH:MM for the caption
-        def _fmt(m):
-            return f"{m // 60:02d}:{m % 60:02d}"
-
-        st.caption(f"Showing  {_fmt(time_range_vals[0])} → {_fmt(time_range_vals[1])}")
-
-    # Open-ended windows (no next-hunk cap — typically the most recent
-    # action) default to a simple two-line Before/After comparison
-    # instead of a per-day trend, since averaging dozens/hundreds of
-    # days into individual lines is unreadable and rarely useful.
-    open_ended_window = next_hunk_date is None or ignore_next
+        time_range_vals = tuple(_minutes_from_hhmm(v) for v in time_range_labels)
+        st.caption(
+            f"Showing {time_range_labels[0]} → {time_range_labels[1]} "
+            f"({time_range_vals[0] // 60}h {time_range_vals[0] % 60:02d}m to "
+            f"{time_range_vals[1] // 60}h {time_range_vals[1] % 60:02d}m)"
+        )
 
     with ctrl_b:
-        show_individual = st.checkbox(
-            "Show days individually",
-            value=(len(after_dates) > 1 and not open_ended_window),
-            help=(
-                "When checked, each After day is plotted separately against its "
-                "matched Before day.  Days are grouped by weekday.  "
-                "Uncheck to collapse back to the aggregated mean.  "
-                "Defaults to OFF for open-ended windows (e.g. the most recent "
-                "action with no next commit to cap it) to avoid a cluttered "
-                "chart — you get a clean two-line Before/After comparison instead."
-            ),
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='alert-info'>Exactly two lines: Before action vs After action.</div>",
+            unsafe_allow_html=True,
         )
-        show_ma = False
-        if not show_individual:
-            show_ma = st.checkbox(
-                "Also show moving-average trend line",
-                value=not open_ended_window,
-                help="Uncheck for a clean two-line Before/After comparison only.",
-            )
 
     with ctrl_c:
         show_commits = st.checkbox(
-            "Annotate commits on chart",
+            "Annotate commits",
             value=True,
             help="Draw vertical markers, at their actual time of day, for every commit in the selected hunk.",
         )
 
-    # ── Collect commits to annotate (all commits in selected hunk) ────
     commits_to_annotate = selected_hunk["commits"] if show_commits else None
+    time_range = time_range_vals
 
-    time_range = time_range_vals  # always pass the tuple
-
-    # ── Render ────────────────────────────────────────────────────────
     if selected_kpi not in before_df.columns or selected_kpi not in after_df.columns:
         st.warning(f"KPI `{selected_kpi}` not available in the fetched data window.")
-
-    elif show_individual and len(after_dates) > 1:
-        # ── Individual-day mode ────────────────────────────────────────
-        weekday_data = collect_individual_days(kpi_df, after_start, after_end)
-
-        if not weekday_data:
-            st.warning("No individual day data could be built for this window.")
-        else:
-            weekday_order = [
-                "Monday",
-                "Tuesday",
-                "Wednesday",
-                "Thursday",
-                "Friday",
-                "Saturday",
-                "Sunday",
-            ]
-            present_weekdays = [w for w in weekday_order if w in weekday_data]
-            # Also include any weekday not in the canonical list
-            present_weekdays += [w for w in weekday_data if w not in weekday_order]
-
-            fig_dict = plot_kpi_trend_individual(
-                weekday_data,
-                kpi=selected_kpi,
-                time_range=time_range,
-                commits_in_window=commits_to_annotate,
-            )
-
-            # Aggregate-per-weekday toggle
-            agg_weekdays = st.checkbox(
-                "Also show per-weekday aggregate overlay",
-                value=False,
-                help=(
-                    "Adds a thick mean line on top of the individual day traces, "
-                    "one per weekday group."
-                ),
-            )
-
-            tabs = st.tabs(present_weekdays) if len(present_weekdays) > 1 else [None]
-
-            for tab, weekday in zip(tabs, present_weekdays):
-                ctx = tab if tab else st
-                with ctx:
-                    fig = fig_dict.get(weekday)
-                    if fig:
-                        if agg_weekdays:
-                            # Add aggregate mean traces on top
-                            day_data = weekday_data[weekday]
-                            all_after = list(day_data["after_days"].values())
-                            all_before = list(day_data["before_days"].values())
-
-                            def _mean_frames(frames, col):
-                                frames = [
-                                    f
-                                    for f in frames
-                                    if not f.empty and col in f.columns
-                                ]
-                                if not frames:
-                                    return pd.Series(dtype=float)
-                                aligned = pd.concat(frames, axis=1).mean(axis=1)
-                                return aligned
-
-                            mean_after = _mean_frames(all_after, selected_kpi)
-                            mean_before = _mean_frames(all_before, selected_kpi)
-
-                            if not mean_after.empty:
-                                if time_range:
-                                    s, e = time_range
-                                    mean_after = mean_after.loc[
-                                        (mean_after.index >= s)
-                                        & (mean_after.index <= e)
-                                    ]
-                                    mean_before = (
-                                        mean_before.loc[
-                                            (mean_before.index >= s)
-                                            & (mean_before.index <= e)
-                                        ]
-                                        if not mean_before.empty
-                                        else mean_before
-                                    )
-
-                                xt = [_fmt(m) for m in mean_after.index]
-                                fig.add_trace(
-                                    go.Scatter(
-                                        x=xt,
-                                        y=mean_after.round(4),
-                                        mode="lines",
-                                        name=f"Mean After ({weekday})",
-                                        line=dict(color="#ffffff", width=3),
-                                        opacity=0.85,
-                                    )
-                                )
-                                if not mean_before.empty:
-                                    xb = [_fmt(m) for m in mean_before.index]
-                                    fig.add_trace(
-                                        go.Scatter(
-                                            x=xb,
-                                            y=mean_before.round(4),
-                                            mode="lines",
-                                            name=f"Mean Before ({weekday})",
-                                            line=dict(
-                                                color="#ffb347", width=2, dash="dot"
-                                            ),
-                                            opacity=0.85,
-                                        )
-                                    )
-
-                        st.plotly_chart(fig, width="stretch")
-                    else:
-                        st.info(f"No data for {weekday}.")
-
     else:
-        # ── Aggregated mode (original behaviour) ───────────────────────
         fig_trend = plot_kpi_trend(
             before_df,
             after_df,
@@ -976,15 +1010,12 @@ def main():
             before_dates,
             commits_in_window=commits_to_annotate,
             time_range=time_range,
-            show_ma=show_ma,
+            show_ma=False,
         )
-        st.plotly_chart(fig_trend, width="stretch")
-        if open_ended_window and not show_individual:
-            st.caption(
-                "Open-ended evaluation window (no next action to cap it) — "
-                "showing a simple two-line Before/After comparison rather than "
-                f"averaging all {n_after} day(s) into a cluttered trend."
-            )
+        if not fig_trend.data:
+            st.warning("No KPI samples are available inside the selected time-of-day range.")
+        else:
+            st.plotly_chart(fig_trend, width="stretch")
 
     st.markdown("---")
 
@@ -1002,8 +1033,12 @@ def main():
             after_df,
             selected_kpi,
             polarity=polarity_map[selected_kpi],
+            time_range=time_range,
         )
-        st.plotly_chart(fig_delta, width="stretch")
+        if not fig_delta.data:
+            st.warning("No interval deltas are available inside the selected time-of-day range.")
+        else:
+            st.plotly_chart(fig_delta, width="stretch")
 
     st.markdown("---")
 
@@ -1028,7 +1063,8 @@ def main():
                 return "color:#ff4d6d;font-weight:bold"
             return ""
 
-        styled = summary_df.style.map(color_status, subset=["Status"]).format(
+        summary_display = summary_df.reset_index(drop=True)
+        styled = summary_display.style.map(color_status, subset=["Status"]).format(
             {
                 "Before Avg": "{:.4f}",
                 "After Avg": "{:.4f}",
@@ -1036,7 +1072,31 @@ def main():
                 "% Change": "{:+.2f}%",
             }
         )
-        st.dataframe(styled, width="stretch", height=400)
+        summary_event = st.dataframe(
+            styled,
+            width="stretch",
+            height=400,
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key="kpi_impact_summary_table",
+        )
+        st.caption("Click any KPI row to make it the analysed KPI above.")
+
+        summary_payload = _selection_payload(summary_event)
+        summary_signature = _selection_signature(summary_payload)
+        summary_rows = _dataframe_selected_rows(summary_event)
+        if summary_rows and summary_signature != st.session_state.get("_kpi_summary_sig"):
+            st.session_state["_kpi_summary_sig"] = summary_signature
+            row_idx = summary_rows[0]
+            if 0 <= row_idx < len(summary_display):
+                clicked_kpi = str(summary_display.iloc[row_idx]["KPI"])
+                if clicked_kpi in kpi_columns and clicked_kpi != st.session_state.get("selected_kpi"):
+                    st.session_state["selected_kpi"] = clicked_kpi
+                    st.session_state["kpi_selector_nonce"] = int(
+                        st.session_state.get("kpi_selector_nonce", 0)
+                    ) + 1
+                    st.rerun()
 
         n_improved = (summary_df["Status"] == "🟢 Improved").sum()
         n_degraded = (summary_df["Status"] == "🔴 Degraded").sum()
@@ -1073,37 +1133,111 @@ def main():
     if not per_cell_hunks:
         st.info("No per-cell actions available to compare under the current filters.")
     else:
-        cmp_c1, cmp_c2 = st.columns([3, 1])
-        with cmp_c1:
-            cmp_labels = [h["label"] for h in per_cell_hunks]
+        comparison_mode = st.radio(
+            "Comparison mode",
+            options=[
+                "Different actions on the same cell",
+                "Same action type on different cells",
+            ],
+            horizontal=True,
+            key="comparison_mode",
+        )
+
+        if comparison_mode == "Different actions on the same cell":
+            mode_c1, mode_c2 = st.columns([1, 1])
+            with mode_c1:
+                target_cell = st.selectbox(
+                    "Cell to compare within",
+                    options=sorted({h["cell_id"] for h in per_cell_hunks}),
+                    key="comparison_target_cell",
+                )
+            candidate_hunks = [h for h in per_cell_hunks if h["cell_id"] == target_cell]
+            selection_key = f"cmp_actions_same_cell_{target_cell}"
+            selection_label = f"Actions on {target_cell} (2+)"
+        else:
+            action_type_options = sorted(
+                {action_type for h in per_cell_hunks for action_type in h.get("action_types", [])}
+            )
+            mode_c1, mode_c2 = st.columns([1, 1])
+            if not action_type_options:
+                with mode_c1:
+                    st.info("No action types are available under the current filters.")
+                target_action_type = ""
+                candidate_hunks = []
+            else:
+                with mode_c1:
+                    target_action_type = st.selectbox(
+                        "Action type to compare across cells",
+                        options=action_type_options,
+                        key="comparison_target_action_type",
+                    )
+                candidate_hunks = [
+                    h for h in per_cell_hunks if target_action_type in h.get("action_types", [])
+                ]
+            selection_key = f"cmp_actions_same_type_{target_action_type or 'none'}"
+            selection_label = (
+                f"{target_action_type} actions on different cells (2+)"
+                if target_action_type
+                else "Actions on different cells (2+)"
+            )
+
+        cmp_labels = [h["label"] for h in candidate_hunks]
+        with mode_c2:
+            cmp_kpi = st.selectbox(
+                "KPI",
+                options=kpi_columns,
+                index=kpi_columns.index(selected_kpi),
+                key=f"cmp_kpi_{kpi_selector_nonce}",
+            )
+
+        if len(cmp_labels) < 2:
+            st.info("At least two matching actions are required for this comparison mode.")
+        else:
             chosen_labels = st.multiselect(
-                "Actions to compare (2+)",
+                selection_label,
                 options=cmp_labels,
                 default=cmp_labels[-min(3, len(cmp_labels)):],
+                key=selection_key,
             )
-        with cmp_c2:
-            cmp_kpi = st.selectbox("KPI", options=kpi_columns, key="cmp_kpi")
-            cmp_days = st.number_input("After-window length (days)", min_value=1, max_value=14, value=1)
+            st.caption(
+                f"Using the shared comparison setting: {comparison_weeks} week(s) "
+                "after versus the same available span before each action."
+            )
 
-        chosen_actions = [h for h in per_cell_hunks if h["label"] in chosen_labels]
-        if len(chosen_actions) >= 2:
-            cmp_dates = [a["date"] for a in chosen_actions]
-            cmp_fetch_start = (
-                datetime.strptime(min(cmp_dates), "%Y-%m-%d") - timedelta(days=7)
-            ).strftime("%Y-%m-%d")
-            cmp_fetch_end = (
-                datetime.strptime(max(cmp_dates), "%Y-%m-%d") + timedelta(days=int(cmp_days))
-            ).strftime("%Y-%m-%d")
-            full_kpi_df = _get_kpi_data(conn, start=cmp_fetch_start, end=cmp_fetch_end)
-            comparison_df = compare_actions(full_kpi_df, chosen_actions, cmp_kpi, eval_days=int(cmp_days))
-            if comparison_df.empty:
-                st.warning("Not enough data to compare the selected actions.")
+            chosen_actions = [h for h in candidate_hunks if h["label"] in chosen_labels]
+            can_compare = len(chosen_actions) >= 2
+            if comparison_mode == "Same action type on different cells":
+                distinct_cells = {a["cell_id"] for a in chosen_actions}
+                if len(chosen_actions) >= 2 and len(distinct_cells) < 2:
+                    st.warning("Choose actions from at least two different cells.")
+                    can_compare = False
+
+            if can_compare:
+                span_days = comparison_weeks * 7
+                cmp_dates = [a["date"] for a in chosen_actions]
+                cmp_fetch_start = (
+                    datetime.strptime(min(cmp_dates), "%Y-%m-%d") - timedelta(days=span_days)
+                ).strftime("%Y-%m-%d")
+                cmp_fetch_end = (
+                    datetime.strptime(max(cmp_dates), "%Y-%m-%d") + timedelta(days=span_days - 1)
+                ).strftime("%Y-%m-%d")
+                full_kpi_df = _get_kpi_data(conn, start=cmp_fetch_start, end=cmp_fetch_end)
+                comparison_df = compare_actions(
+                    full_kpi_df,
+                    chosen_actions,
+                    cmp_kpi,
+                    comparison_weeks=comparison_weeks,
+                )
+                if comparison_df.empty:
+                    st.warning("Not enough data to compare the selected actions.")
+                else:
+                    fig_cmp = plot_action_comparison(
+                        comparison_df, cmp_kpi, polarity_map.get(cmp_kpi, "higher")
+                    )
+                    st.plotly_chart(fig_cmp, width="stretch")
+                    st.dataframe(comparison_df, width="stretch", hide_index=True)
             else:
-                fig_cmp = plot_action_comparison(comparison_df, cmp_kpi, polarity_map.get(cmp_kpi, "higher"))
-                st.plotly_chart(fig_cmp, width="stretch")
-                st.dataframe(comparison_df, width="stretch")
-        else:
-            st.info("Select at least two actions to compare.")
+                st.info("Select at least two valid actions to compare.")
 
     st.markdown("---")
 
@@ -1117,25 +1251,52 @@ def main():
 
     commit_c1, commit_c2 = st.columns([1, 1])
     with commit_c1:
-        with st.form("commit_action_form"):
-            st.markdown("**Commit a new action**")
-            ca_cell = st.selectbox("Cell", options=all_cell_ids, key="ca_cell")
-            ca_param = st.selectbox("Parameter", options=param_names, key="ca_param")
-            ca_current = get_current_param_value(conn, ca_cell, ca_param)
-            st.caption(f"Current value: `{ca_current}`")
-            ca_value = st.text_input("New value", value=str(ca_current) if ca_current is not None else "")
-            ca_msg = st.text_input("Commit message", value=f"Adjust {ca_param} on {ca_cell}")
+        st.markdown("**Commit a new action**")
+        # Cell/parameter selectors stay outside the form so changing either
+        # immediately refreshes the live current value below.
+        ca_cell = st.selectbox("Cell", options=all_cell_ids, key="ca_cell")
+        ca_param = st.selectbox("Parameter", options=param_names, key="ca_param")
+        ca_current = get_current_param_value(conn, ca_cell, ca_param)
+        st.caption(f"Current value for `{ca_cell}` · `{ca_param}`: `{ca_current}`")
+
+        form_suffix = f"{ca_cell}_{ca_param}_{ca_current}"
+        with st.form(f"commit_action_form_{form_suffix}"):
+            ca_value = st.text_input(
+                "New value",
+                value=str(ca_current) if ca_current is not None else "",
+                key=f"ca_value_{form_suffix}",
+            )
+            ca_msg = st.text_input(
+                "Commit message",
+                value=f"Adjust {ca_param} on {ca_cell}",
+                key=f"ca_msg_{form_suffix}",
+            )
             ca_submit = st.form_submit_button("✅ Commit Action", type="primary")
             if ca_submit:
-                commit_action(conn, ca_cell, ca_param, ca_value, ca_msg, committer="you")
-                _get_log.clear()
-                _get_kpi_data.clear()
-                st.success(f"Committed {ca_param} = {ca_value} on {ca_cell}.")
-                st.rerun()
+                try:
+                    commit_action(conn, ca_cell, ca_param, ca_value, ca_msg, committer="you")
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    _get_log.clear()
+                    _get_kpi_data.clear()
+                    st.success(f"Committed {ca_param} = {ca_value} on {ca_cell}.")
+                    st.rerun()
 
     with commit_c2:
         st.markdown("**Rollback a recent commit**")
-        recent = log_df.sort_values("date", ascending=False).head(15)
+        rollback_search = st.text_input(
+            "Search rollback candidates (fuzzy; spaces mean OR)",
+            key="rollback_search",
+            placeholder="e.g. tilt CELL_001 ali",
+        )
+        rollback_pool = filter_log_df(log_df, search_text=rollback_search or None)
+        recent = rollback_pool.sort_values("date", ascending=False).head(15)
+        st.caption(
+            f"Showing {len(recent)} of {len(rollback_pool)} matching commit(s), newest first."
+        )
+        if recent.empty:
+            st.info("No rollback candidates match the search.")
         for _, r in recent.iterrows():
             rc1, rc2 = st.columns([4, 1])
             with rc1:
@@ -1148,11 +1309,15 @@ def main():
                 )
             with rc2:
                 if st.button("↩ Rollback", key=f"rb_{r['commit_hash']}"):
-                    rollback_action(conn, r["commit_hash"], committer="you")
-                    _get_log.clear()
-                    _get_kpi_data.clear()
-                    st.success(f"Rolled back {str(r['commit_hash'])[:8]}.")
-                    st.rerun()
+                    try:
+                        rollback_action(conn, r["commit_hash"], committer="you")
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        _get_log.clear()
+                        _get_kpi_data.clear()
+                        st.success(f"Rolled back {str(r['commit_hash'])[:8]}.")
+                        st.rerun()
 
     st.markdown("---")
 
@@ -1211,11 +1376,15 @@ def main():
                     f"(step {sw['best_step_index'] + 1}/{sw['n_steps']})"
                 )
                 if st.button("✅ Finalize — auto-commit best value", key=f"fin_{sw['id']}"):
-                    finalize_sweep(conn, sw["id"])
-                    _get_log.clear()
-                    _get_kpi_data.clear()
-                    st.success("Best value committed.")
-                    st.rerun()
+                    try:
+                        finalize_sweep(conn, sw["id"])
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        _get_log.clear()
+                        _get_kpi_data.clear()
+                        st.success("Best value committed.")
+                        st.rerun()
             st.markdown("---")
 
     # ── Footer ────────────────────────────────────────────────────────

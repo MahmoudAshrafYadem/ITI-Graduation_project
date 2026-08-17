@@ -1,0 +1,58 @@
+{
+  "kpi_polarity": {
+    "throughput_dl_mbps": "higher",
+    "throughput_ul_mbps": "higher",
+    "drop_rate_pct": "lower",
+    "rach_success_rate_pct": "higher",
+    "avg_cqi": "higher",
+    "bler_dl_pct": "lower",
+    "latency_ms": "lower",
+    "prb_utilization_pct": "higher",
+    "handover_success_rate_pct": "higher",
+    "sinr_db": "higher"
+  },
+  "param_kpi_map": {
+    "antenna_tilt_deg": [
+      "throughput_dl_mbps",
+      "sinr_db",
+      "avg_cqi",
+      "drop_rate_pct"
+    ],
+    "ca_band_combo": [
+      "throughput_dl_mbps",
+      "throughput_ul_mbps"
+    ],
+    "ho_a3_offset": [
+      "handover_success_rate_pct",
+      "drop_rate_pct"
+    ],
+    "mimo_rank": [
+      "throughput_dl_mbps",
+      "sinr_db"
+    ],
+    "qos_profile": [
+      "latency_ms",
+      "throughput_ul_mbps"
+    ],
+    "rach_root_seq": [
+      "rach_success_rate_pct",
+      "latency_ms"
+    ],
+    "sched_weight": [
+      "prb_utilization_pct",
+      "throughput_dl_mbps"
+    ],
+    "tx_power_dbm": [
+      "throughput_dl_mbps",
+      "sinr_db",
+      "prb_utilization_pct"
+    ]
+  },
+  "kpi_groups": {
+    "home ": [
+      "avg_cqi",
+      "rach_success_rate_pct"
+    ]
+  },
+  "param_groups": {}
+}

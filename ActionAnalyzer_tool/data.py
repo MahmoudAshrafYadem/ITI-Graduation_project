@@ -4,12 +4,14 @@ data.py — Pure-pandas data wrangling layer.
 Responsibilities:
   1. build_action_hunks()           — day-level commit aggregation
   2. resolve_eval_window()          — rolling "After" window with next-hunk cap
-  3. collect_matching_weekdays()    — aggregate all matching historical weekdays
+  3. collect_comparison_periods()   — aggregate symmetric Before/After periods
   4. align_periods()                — normalise Before/After to minute_of_day index
 """
 
+import re
+from difflib import SequenceMatcher
+
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta, date
 
 
@@ -135,6 +137,60 @@ def build_action_hunks_by_cell(log_df: pd.DataFrame) -> list[dict]:
 #  1c. LOG / HUNK FILTERING
 # ══════════════════════════════════════════════════════════════════════
 
+_SEARCH_FIELDS = (
+    "message",
+    "committer",
+    "parameter",
+    "email",
+    "commit_hash",
+    "cell_id",
+    "cell_group",
+    "action_type",
+    "optimizer",
+    "from_val",
+    "to_val",
+)
+
+
+def _fuzzy_token_matches(text: object, token: str, threshold: float = 0.62) -> bool:
+    """
+    Case-insensitive fuzzy token match.
+
+    Exact substring matches always win. For typo-tolerant matching, compare
+    the query token with each word-ish fragment in the searchable text.
+    Very short tokens stay substring-only to avoid noisy false positives.
+    """
+    haystack = str(text or "").casefold()
+    token = token.casefold().strip()
+    if not token:
+        return False
+    if token in haystack:
+        return True
+    if len(token) < 3:
+        return False
+
+    words = re.findall(r"[a-z0-9]+", haystack)
+    return any(
+        SequenceMatcher(None, token, word).ratio() >= threshold for word in words
+    )
+
+
+def row_matches_search(row: pd.Series | dict, search_text: str | None) -> bool:
+    """
+    Match a commit row against a fuzzy query.
+
+    Whitespace separates alternatives: ``power tilt`` means rows matching
+    "power" OR "tilt", not one phrase containing both words.
+    """
+    if not search_text or not search_text.strip():
+        return True
+    tokens = [token for token in re.split(r"\s+", search_text.strip()) if token]
+    return any(
+        _fuzzy_token_matches(row.get(field, ""), token)
+        for token in tokens
+        for field in _SEARCH_FIELDS
+    )
+
 
 def filter_log_df(
     log_df: pd.DataFrame,
@@ -161,14 +217,7 @@ def filter_log_df(
     if action_types and "action_type" in df.columns:
         df = df[df["action_type"].isin(action_types)]
     if search_text:
-        needle = search_text.lower()
-        mask = df.apply(
-            lambda r: needle in str(r.get("message", "")).lower()
-            or needle in str(r.get("committer", "")).lower()
-            or needle in str(r.get("parameter", "")).lower(),
-            axis=1,
-        )
-        df = df[mask]
+        df = df[df.apply(lambda row: row_matches_search(row, search_text), axis=1)]
     if date_from:
         df = df[df["date"].astype(str) >= date_from]
     if date_to:
@@ -186,33 +235,35 @@ def compare_actions(
     kpi_df: pd.DataFrame,
     actions: list[dict],
     kpi: str,
-    eval_days: int = 1,
+    eval_days: int | None = None,
+    comparison_weeks: int = 1,
 ) -> pd.DataFrame:
     """
-    Compare the Before/After impact of several actions (hunks) on the
-    same KPI — either several actions on one cell, or the same/similar
-    action type across several cells.
+    Compare the Before/After impact of several actions (hunks) on one KPI.
 
-    Args:
-        actions   : list of hunk dicts (must include "cell_id" and "date")
-        kpi       : KPI column to evaluate
-        eval_days : length of the After window starting at the action date
+    ``comparison_weeks`` requests N weeks after each action and the matching
+    N-week block immediately before it. If fewer days are available, the
+    available span is used on both sides. ``eval_days`` remains as a
+    backwards-compatible override for older callers.
 
     Returns a DataFrame with one row per action:
         cell_id, date, action_types, before_avg, after_avg, abs_change, pct_change
     """
+    span_days = int(eval_days) if eval_days is not None else max(1, int(comparison_weeks)) * 7
     rows = []
     for action in actions:
         cell_id = action.get("cell_id")
         action_date = action["date"]
         after_end = (
-            datetime.strptime(action_date, "%Y-%m-%d") + timedelta(days=eval_days - 1)
+            datetime.strptime(action_date, "%Y-%m-%d") + timedelta(days=span_days - 1)
         ).strftime("%Y-%m-%d")
 
         cell_kpi_df = (
             kpi_df[kpi_df["cell_id"] == cell_id] if cell_id and "cell_id" in kpi_df.columns else kpi_df
         )
-        before_df, after_df, _, _ = collect_matching_weekdays(cell_kpi_df, action_date, after_end)
+        before_df, after_df, _, _ = collect_comparison_periods(
+            cell_kpi_df, action_date, after_end
+        )
 
         if before_df.empty or after_df.empty or kpi not in before_df.columns or kpi not in after_df.columns:
             continue
@@ -247,35 +298,37 @@ def resolve_eval_window(
     hunks: list[dict],
     selected_hunk_date: str,
     ignore_next_hunk: bool = False,
+    comparison_weeks: int = 1,
 ) -> tuple[str, str, str | None]:
     """
-    Determine the "After" evaluation window for the selected hunk.
+    Determine the requested N-week "After" evaluation window.
 
     Rules:
       - Window starts on selected_hunk_date.
-      - Window ends at today's date OR the start of the NEXT hunk,
-        whichever comes first — unless ignore_next_hunk is True,
-        in which case it always ends at today.
+      - Requested window lasts comparison_weeks * 7 days.
+      - It is capped by the next action hunk and by today unless
+        ignore_next_hunk is True (today remains the outer cap).
 
     Returns:
         (after_start, after_end, next_hunk_date_or_None)
-        Both dates are "YYYY-MM-DD" strings.
     """
-    today_str = date.today().strftime("%Y-%m-%d")
+    today = date.today()
     after_start = selected_hunk_date
+    start_dt = datetime.strptime(selected_hunk_date, "%Y-%m-%d").date()
+    weeks = max(1, int(comparison_weeks or 1))
+    requested_end = start_dt + timedelta(days=weeks * 7 - 1)
 
-    # Find the next hunk after the selected one
     later_hunks = [h for h in hunks if h["date"] > selected_hunk_date]
     next_hunk_date = later_hunks[0]["date"] if later_hunks else None
 
+    effective_end = min(requested_end, today)
     if next_hunk_date and not ignore_next_hunk:
-        # Cap one day before the next hunk to avoid overlap
-        cap_dt = datetime.strptime(next_hunk_date, "%Y-%m-%d") - timedelta(days=1)
-        after_end = min(cap_dt.strftime("%Y-%m-%d"), today_str)
-    else:
-        after_end = today_str
+        cap_dt = datetime.strptime(next_hunk_date, "%Y-%m-%d").date() - timedelta(days=1)
+        effective_end = min(effective_end, cap_dt)
 
-    return after_start, after_end, next_hunk_date
+    if effective_end < start_dt:
+        effective_end = start_dt
+    return after_start, effective_end.strftime("%Y-%m-%d"), next_hunk_date
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -283,41 +336,7 @@ def resolve_eval_window(
 # ══════════════════════════════════════════════════════════════════════
 
 
-def collect_matching_weekdays(
-    kpi_df: pd.DataFrame,
-    after_start: str,
-    after_end: str,
-) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
-    """
-    Build averaged "After" and "Before" profiles by collecting all
-    matching historical weekdays.
-
-    For each unique (weekday, minute_of_day) in the After window:
-      - After profile  = mean of all After-window days with that weekday
-      - Before profile = mean of all matching weekdays 7 days *prior*
-        to each After day (i.e., same day-of-week, one week back)
-
-    This supports multi-week evaluation windows cleanly.
-
-    Args:
-        kpi_df      : Full KPI DataFrame with `timestamp` column
-        after_start : "YYYY-MM-DD"
-        after_end   : "YYYY-MM-DD"
-
-    Returns:
-        (before_df, after_df, after_dates_used, before_dates_used)
-        both DataFrames indexed by minute_of_day (0–1439)
-    """
-    if kpi_df.empty:
-        empty = pd.DataFrame()
-        return empty, empty, [], []
-
-    df = kpi_df.copy()
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-    df = df.dropna(subset=["timestamp"])
-    df["date_str"] = df["timestamp"].dt.strftime("%Y-%m-%d")
-    df["minute_of_day"] = df["timestamp"].dt.hour * 60 + df["timestamp"].dt.minute
-
+def _numeric_kpi_columns(df: pd.DataFrame) -> list[str]:
     non_numeric = {
         "timestamp",
         "date_str",
@@ -329,48 +348,130 @@ def collect_matching_weekdays(
         "region",
         "vendor",
     }
-    numeric_cols = [
+    return [
         c
         for c in df.columns
         if c not in non_numeric and pd.api.types.is_numeric_dtype(df[c])
     ]
 
-    # ── Identify every distinct date in the After window ──────────────
-    after_dates = sorted(
-        [d for d in df["date_str"].unique() if after_start <= d <= after_end]
-    )
+
+def collect_comparison_periods(
+    kpi_df: pd.DataFrame,
+    after_start: str,
+    after_end: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
+    """
+    Build averaged profiles for the available After span and an equally
+    long Before span immediately preceding it.
+
+    The caller chooses the requested N-week After window. This function
+    trims both sides to the dates actually present in the data, so asking
+    for four weeks with only two weeks of usable history compares the
+    available two weeks after the action with the two weeks before it.
+
+    Returns:
+        (before_df, after_df, after_dates_used, before_dates_used)
+        with both profiles indexed by minute_of_day (0–1439).
+    """
+    if kpi_df.empty:
+        empty = pd.DataFrame()
+        return empty, empty, [], []
+
+    df = kpi_df.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    df = df.dropna(subset=["timestamp"])
+    if df.empty:
+        empty = pd.DataFrame()
+        return empty, empty, [], []
+
+    df["date_str"] = df["timestamp"].dt.strftime("%Y-%m-%d")
+    df["minute_of_day"] = df["timestamp"].dt.hour * 60 + df["timestamp"].dt.minute
+    numeric_cols = _numeric_kpi_columns(df)
+
+    requested_start = datetime.strptime(after_start, "%Y-%m-%d").date()
+    requested_end = datetime.strptime(after_end, "%Y-%m-%d").date()
+    if requested_end < requested_start:
+        empty = pd.DataFrame()
+        return empty, empty, [], []
+
+    available_dates = sorted(df["date_str"].unique())
+    after_dates = [
+        d for d in available_dates if after_start <= d <= after_end
+    ]
     if not after_dates:
         empty = pd.DataFrame()
         return empty, empty, [], []
 
-    # ── For each after_date, find its matching baseline date ───────────
-    baseline_dates = []
-    for ad in after_dates:
-        bd = (datetime.strptime(ad, "%Y-%m-%d") - timedelta(days=7)).strftime(
-            "%Y-%m-%d"
-        )
-        baseline_dates.append(bd)
+    # Use the actual available span on both sides. For a complete N-week
+    # window this is exactly the N weeks after the action versus the N
+    # weeks immediately before it; for a capped/truncated window it is
+    # the same number of available calendar days on both sides.
+    effective_after_start = datetime.strptime(after_dates[0], "%Y-%m-%d").date()
+    effective_after_end = datetime.strptime(after_dates[-1], "%Y-%m-%d").date()
+    requested_span_days = (effective_after_end - effective_after_start).days + 1
+    before_end = effective_after_start - timedelta(days=1)
+    initial_before_start = before_end - timedelta(days=requested_span_days - 1)
+
+    initial_before_dates = [
+        d
+        for d in available_dates
+        if initial_before_start.strftime("%Y-%m-%d") <= d <= before_end.strftime("%Y-%m-%d")
+    ]
+    if not initial_before_dates:
+        empty = pd.DataFrame()
+        return empty, empty, [], []
+
+    # Keep both sides symmetric when history is shorter than the requested
+    # N weeks: the usable Before range determines how much After data is
+    # included, and vice versa.
+    first_before = datetime.strptime(initial_before_dates[0], "%Y-%m-%d").date()
+    last_before = datetime.strptime(initial_before_dates[-1], "%Y-%m-%d").date()
+    before_span_days = (last_before - first_before).days + 1
+    span_days = min(requested_span_days, before_span_days)
+
+    before_start = before_end - timedelta(days=span_days - 1)
+    effective_after_end = effective_after_start + timedelta(days=span_days - 1)
+    before_start_str = before_start.strftime("%Y-%m-%d")
+    before_end_str = before_end.strftime("%Y-%m-%d")
+    effective_after_end_str = effective_after_end.strftime("%Y-%m-%d")
+
+    before_dates = [
+        d for d in initial_before_dates if before_start_str <= d <= before_end_str
+    ]
+    after_dates = [
+        d for d in after_dates if after_dates[0] <= d <= effective_after_end_str
+    ]
 
     def _mean_over_dates(date_list: list[str]) -> pd.DataFrame:
-        """Average all minute_of_day profiles across the given dates."""
-        available = [d for d in date_list if d in df["date_str"].values]
-        if not available:
+        if not date_list:
             return pd.DataFrame()
-        subset = df[df["date_str"].isin(available)]
+        subset = df[df["date_str"].isin(date_list)]
+        if subset.empty or not numeric_cols:
+            return pd.DataFrame()
         return subset.groupby("minute_of_day")[numeric_cols].mean().sort_index()
 
     after_df = _mean_over_dates(after_dates)
-    before_df = _mean_over_dates(baseline_dates)
-
+    before_df = _mean_over_dates(before_dates)
     if after_df.empty or before_df.empty:
-        return before_df, after_df, after_dates, baseline_dates
+        return before_df, after_df, after_dates, before_dates
 
-    # Align to shared minute index
     common = after_df.index.intersection(before_df.index)
     after_df = after_df.loc[common]
     before_df = before_df.loc[common]
+    return before_df, after_df, after_dates, before_dates
 
-    return before_df, after_df, after_dates, baseline_dates
+
+def collect_matching_weekdays(
+    kpi_df: pd.DataFrame,
+    after_start: str,
+    after_end: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str], list[str]]:
+    """
+    Backwards-compatible name for the week-aware comparison collector.
+    The window length now controls the immediately preceding baseline,
+    rather than always looking exactly seven days back from each After day.
+    """
+    return collect_comparison_periods(kpi_df, after_start, after_end)
 
 
 # ══════════════════════════════════════════════════════════════════════
