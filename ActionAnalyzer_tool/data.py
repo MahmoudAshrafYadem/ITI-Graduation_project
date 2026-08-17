@@ -74,6 +74,171 @@ def build_action_hunks(log_df: pd.DataFrame) -> list[dict]:
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  1b. PER-CELL ACTION HUNKS  (for filtering / comparison)
+# ══════════════════════════════════════════════════════════════════════
+
+
+def build_action_hunks_by_cell(log_df: pd.DataFrame) -> list[dict]:
+    """
+    Like build_action_hunks(), but grouped by (cell_id, calendar date)
+    instead of date alone, so each hunk unambiguously belongs to one
+    cell. Used for cross-cell / cross-action comparison and for
+    cell-scoped filtering, independent of the network-wide timeline.
+
+    Each dict adds: "cell_id", "cell_group", "action_types" (sorted
+    unique action types in the hunk), "optimizers" (sorted unique
+    optimizer values).
+    """
+    if log_df.empty or "cell_id" not in log_df.columns:
+        return []
+
+    df = log_df.copy()
+    if not pd.api.types.is_datetime64_any_dtype(df["date"]):
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"]).sort_values("date")
+    df["date_str"] = df["date"].dt.strftime("%Y-%m-%d")
+
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    hunks = []
+    for (cell_id, date_str), group in df.groupby(["cell_id", "date_str"], sort=True):
+        weekday = datetime.strptime(date_str, "%Y-%m-%d").strftime("%a")
+        n = len(group)
+        commit_word = "commit" if n == 1 else "commits"
+        action_types = sorted(set(group.get("action_type", pd.Series(dtype=str)).dropna()))
+        optimizers = sorted(set(group.get("optimizer", pd.Series(dtype=str)).dropna()))
+        cell_group = group.get("cell_group", pd.Series([""])).iloc[0] if "cell_group" in group else ""
+        label = (
+            f"{cell_id}  ·  {date_str}  ({weekday})  ·  {n} {commit_word}"
+            f"  ·  {', '.join(action_types) if action_types else '—'}"
+        )
+        hunks.append(
+            {
+                "date": date_str,
+                "cell_id": cell_id,
+                "cell_group": cell_group,
+                "action_types": action_types,
+                "optimizers": optimizers,
+                "label": label,
+                "commits": group.to_dict("records"),
+                "n": n,
+            }
+        )
+
+    hunks.sort(key=lambda h: (h["date"], h["cell_id"]))
+    return hunks
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  1c. LOG / HUNK FILTERING
+# ══════════════════════════════════════════════════════════════════════
+
+
+def filter_log_df(
+    log_df: pd.DataFrame,
+    cell_groups: list[str] | None = None,
+    cell_ids: list[str] | None = None,
+    optimizers: list[str] | None = None,
+    action_types: list[str] | None = None,
+    search_text: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> pd.DataFrame:
+    """Apply optional filters to the raw commit-log DataFrame."""
+    if log_df.empty:
+        return log_df
+
+    df = log_df.copy()
+
+    if cell_groups and "cell_group" in df.columns:
+        df = df[df["cell_group"].isin(cell_groups)]
+    if cell_ids and "cell_id" in df.columns:
+        df = df[df["cell_id"].isin(cell_ids)]
+    if optimizers and "optimizer" in df.columns:
+        df = df[df["optimizer"].isin(optimizers)]
+    if action_types and "action_type" in df.columns:
+        df = df[df["action_type"].isin(action_types)]
+    if search_text:
+        needle = search_text.lower()
+        mask = df.apply(
+            lambda r: needle in str(r.get("message", "")).lower()
+            or needle in str(r.get("committer", "")).lower()
+            or needle in str(r.get("parameter", "")).lower(),
+            axis=1,
+        )
+        df = df[mask]
+    if date_from:
+        df = df[df["date"].astype(str) >= date_from]
+    if date_to:
+        df = df[df["date"].astype(str) <= date_to + " 23:59:59"]
+
+    return df
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  1d. CROSS-ACTION / CROSS-CELL COMPARISON
+# ══════════════════════════════════════════════════════════════════════
+
+
+def compare_actions(
+    kpi_df: pd.DataFrame,
+    actions: list[dict],
+    kpi: str,
+    eval_days: int = 1,
+) -> pd.DataFrame:
+    """
+    Compare the Before/After impact of several actions (hunks) on the
+    same KPI — either several actions on one cell, or the same/similar
+    action type across several cells.
+
+    Args:
+        actions   : list of hunk dicts (must include "cell_id" and "date")
+        kpi       : KPI column to evaluate
+        eval_days : length of the After window starting at the action date
+
+    Returns a DataFrame with one row per action:
+        cell_id, date, action_types, before_avg, after_avg, abs_change, pct_change
+    """
+    rows = []
+    for action in actions:
+        cell_id = action.get("cell_id")
+        action_date = action["date"]
+        after_end = (
+            datetime.strptime(action_date, "%Y-%m-%d") + timedelta(days=eval_days - 1)
+        ).strftime("%Y-%m-%d")
+
+        cell_kpi_df = (
+            kpi_df[kpi_df["cell_id"] == cell_id] if cell_id and "cell_id" in kpi_df.columns else kpi_df
+        )
+        before_df, after_df, _, _ = collect_matching_weekdays(cell_kpi_df, action_date, after_end)
+
+        if before_df.empty or after_df.empty or kpi not in before_df.columns or kpi not in after_df.columns:
+            continue
+
+        before_avg = float(before_df[kpi].mean())
+        after_avg = float(after_df[kpi].mean())
+        abs_change = after_avg - before_avg
+        pct_change = (abs_change / abs(before_avg) * 100) if before_avg != 0 else 0.0
+
+        rows.append(
+            {
+                "Label": action.get("label", f"{cell_id} · {action_date}"),
+                "Cell": cell_id or "—",
+                "Date": action_date,
+                "Action Type": ", ".join(action.get("action_types", [])) or "—",
+                "Before Avg": round(before_avg, 4),
+                "After Avg": round(after_avg, 4),
+                "Abs Change": round(abs_change, 4),
+                "% Change": round(pct_change, 2),
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  2. ROLLING EVALUATION WINDOW RESOLVER
 # ══════════════════════════════════════════════════════════════════════
 

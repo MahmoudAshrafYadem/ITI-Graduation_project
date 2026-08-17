@@ -23,12 +23,25 @@ from datetime import datetime, date, timedelta
 from db import (
     get_connection,
     discover_kpi_columns,
+    discover_cell_groups,
+    discover_parameters,
+    get_current_param_value,
     fetch_kpi_data,
     fetch_dolt_log,
     fetch_dolt_diff,
+    commit_action,
+    rollback_action,
+    create_parameter_sweep,
+    advance_due_sweeps,
+    get_sweeps,
+    finalize_sweep,
+    OPTIMIZER_TYPES,
 )
 from data import (
     build_action_hunks,
+    build_action_hunks_by_cell,
+    filter_log_df,
+    compare_actions,
     resolve_eval_window,
     collect_matching_weekdays,
     collect_individual_days,
@@ -38,9 +51,20 @@ from viz import (
     plot_kpi_trend,
     plot_kpi_trend_individual,
     plot_delta_bars,
+    plot_action_comparison,
     build_summary_table,
 )
-from config import load_config, save_config, config_path_str
+from config import (
+    load_config,
+    save_config,
+    config_path_str,
+    load_param_kpi_map,
+    save_param_kpi_map,
+    load_kpi_groups,
+    save_kpi_groups,
+    load_param_groups,
+    save_param_groups,
+)
 
 # ══════════════════════════════════════════════════════════════════════
 #  PAGE CONFIG
@@ -186,17 +210,36 @@ def _get_diff(_conn, commit_hash: str, parent: str | None = None):
     return fetch_dolt_diff(_conn, commit_hash, parent)
 
 
+@st.cache_data(show_spinner="Discovering cell topology…")
+def _get_cell_groups(_conn):
+    return discover_cell_groups(_conn)
+
+
+def _get_parameters(_conn):
+    # Not cached — parameter catalog is static but current values can
+    # change after a commit/rollback within the same session.
+    return discover_parameters(_conn)
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  SIDEBAR — CONFIG + KPI POLARITY
 # ══════════════════════════════════════════════════════════════════════
 
 
-def render_sidebar(kpi_columns: list[str], saved_polarity: dict[str, str]):
+def render_sidebar(
+    kpi_columns: list[str],
+    saved_polarity: dict[str, str],
+    param_names: list[str],
+    saved_param_kpi_map: dict[str, list[str]],
+    saved_kpi_groups: dict[str, list[str]],
+    saved_param_groups: dict[str, list[str]],
+):
     """
-    Renders polarity controls loaded from kpi_config.json.
-    Detects changes and offers a Save button.
+    Renders polarity controls loaded from kpi_config.json, plus editors
+    for parameter⇄KPI relationships, KPI groups, and parameter groups.
+    Detects changes and offers Save buttons per section.
 
-    Returns: (current_polarity_map, save_was_clicked)
+    Returns: current_polarity_map
     """
     with st.sidebar:
         st.markdown("## 📡 NetOps Analyzer")
@@ -264,6 +307,83 @@ def render_sidebar(kpi_columns: list[str], saved_polarity: dict[str, str]):
                 f"Config in sync · {config_path_str()}</div>",
                 unsafe_allow_html=True,
             )
+
+        st.markdown("---")
+
+        # ── Parameter ⇄ KPI relationships ────────────────────────────
+        st.markdown(
+            "<div class='section-header'>Parameter ⇄ KPI Relationships</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Which KPIs each tunable parameter is believed to affect. "
+            "Used to auto-suggest evaluation KPIs for commits & sweeps."
+        )
+        current_param_kpi_map: dict[str, list[str]] = {}
+        with st.expander("Edit relationships", expanded=False):
+            for p in param_names:
+                current_param_kpi_map[p] = st.multiselect(
+                    label=p,
+                    options=kpi_columns,
+                    default=[k for k in saved_param_kpi_map.get(p, []) if k in kpi_columns],
+                    key=f"paramkpi_{p}",
+                )
+            if current_param_kpi_map != saved_param_kpi_map:
+                if st.button("💾 Save Parameter⇄KPI Map", width="stretch"):
+                    save_param_kpi_map(current_param_kpi_map)
+                    st.rerun()
+
+        # ── KPI groups ────────────────────────────────────────────────
+        st.markdown(
+            "<div class='section-header'>KPI Groups</div>", unsafe_allow_html=True
+        )
+        st.caption("Bundle strongly-related KPIs so they can be reviewed together.")
+        with st.expander("Edit KPI groups", expanded=False):
+            new_kpi_groups = dict(saved_kpi_groups)
+            for gname, members in list(new_kpi_groups.items()):
+                new_kpi_groups[gname] = st.multiselect(
+                    label=f"Group: {gname}",
+                    options=kpi_columns,
+                    default=[k for k in members if k in kpi_columns],
+                    key=f"kpigrp_{gname}",
+                )
+            with st.form("new_kpi_group_form", clear_on_submit=True):
+                ng_name = st.text_input("New KPI group name")
+                ng_members = st.multiselect("KPIs in group", options=kpi_columns)
+                if st.form_submit_button("➕ Add Group") and ng_name:
+                    new_kpi_groups[ng_name] = ng_members
+                    save_kpi_groups(new_kpi_groups)
+                    st.rerun()
+            if new_kpi_groups != saved_kpi_groups:
+                if st.button("💾 Save KPI Groups", width="stretch"):
+                    save_kpi_groups(new_kpi_groups)
+                    st.rerun()
+
+        # ── Parameter groups ─────────────────────────────────────────
+        st.markdown(
+            "<div class='section-header'>Parameter Groups</div>", unsafe_allow_html=True
+        )
+        st.caption("Bundle parameters that are always changed together.")
+        with st.expander("Edit parameter groups", expanded=False):
+            new_param_groups = dict(saved_param_groups)
+            for gname, members in list(new_param_groups.items()):
+                new_param_groups[gname] = st.multiselect(
+                    label=f"Group: {gname}",
+                    options=param_names,
+                    default=[p for p in members if p in param_names],
+                    key=f"paramgrp_{gname}",
+                )
+            with st.form("new_param_group_form", clear_on_submit=True):
+                npg_name = st.text_input("New parameter group name")
+                npg_members = st.multiselect("Parameters in group", options=param_names)
+                if st.form_submit_button("➕ Add Group") and npg_name:
+                    new_param_groups[npg_name] = npg_members
+                    save_param_groups(new_param_groups)
+                    st.rerun()
+            if new_param_groups != saved_param_groups:
+                if st.button("💾 Save Parameter Groups", width="stretch"):
+                    save_param_groups(new_param_groups)
+                    st.rerun()
 
         st.markdown("---")
         st.markdown("<div class='section-header'>About</div>", unsafe_allow_html=True)
@@ -378,19 +498,92 @@ def main():
     # ── Load persisted polarity config ────────────────────────────────
     saved_polarity = load_config(kpi_columns)
 
+    # ── Discover cells, parameters, and relationship configs ──────────
+    cell_groups_map = _get_cell_groups(conn)
+    all_cell_ids = sorted({c for cells in cell_groups_map.values() for c in cells})
+    param_catalog = _get_parameters(conn)
+    param_names = sorted(param_catalog.keys())
+
+    saved_param_kpi_map = load_param_kpi_map(param_names, kpi_columns)
+    saved_kpi_groups = load_kpi_groups()
+    saved_param_groups = load_param_groups()
+
+    # ── Advance any due parameter-sweep steps (automated commitments) ──
+    advanced = advance_due_sweeps(conn)
+    if advanced:
+        _get_log.clear()
+        _get_kpi_data.clear()
+        for sw in advanced:
+            if sw["status"] == "completed":
+                st.toast(
+                    f"✅ Sweep on {sw['cell_id']} · {sw['parameter']} finished — "
+                    f"best value {sw['best_value']}",
+                    icon="🎯",
+                )
+            else:
+                st.toast(f"⚙️ Sweep step auto-committed on {sw['cell_id']} · {sw['parameter']}", icon="⚙️")
+
     # ── Sidebar (returns live UI state) ───────────────────────────────
-    polarity_map = render_sidebar(kpi_columns, saved_polarity)
+    polarity_map = render_sidebar(
+        kpi_columns, saved_polarity, param_names,
+        saved_param_kpi_map, saved_kpi_groups, saved_param_groups,
+    )
 
     # ── Load commit log ───────────────────────────────────────────────
     try:
-        log_df = _get_log(conn)
+        log_df_full = _get_log(conn)
     except Exception as exc:
         st.error(f"**Could not read `dolt_log`.**\n\n`{exc}`")
         st.stop()
 
-    if log_df.empty:
+    if log_df_full.empty:
         st.markdown(
             "<div class='alert-warn'>⚠️ No commits found in the Dolt log.</div>",
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
+    # ════════════════════════════════════════════════════════════════
+    #  FILTER BAR — cell group / cell / optimizer / action type / search
+    # ════════════════════════════════════════════════════════════════
+    st.markdown(
+        "<div class='section-header'>🔎 Filters — Cell Group · Optimizer · Action Type</div>",
+        unsafe_allow_html=True,
+    )
+    fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 2, 2, 2])
+    with fc1:
+        f_cell_groups = st.multiselect(
+            "Cell Group", options=sorted(cell_groups_map.keys())
+        )
+    with fc2:
+        available_cells = (
+            sorted({c for g in f_cell_groups for c in cell_groups_map.get(g, [])})
+            if f_cell_groups else all_cell_ids
+        )
+        f_cell_ids = st.multiselect("Cell ID", options=available_cells)
+    with fc3:
+        f_optimizers = st.multiselect(
+            "Optimizer", options=sorted(log_df_full.get("optimizer", pd.Series(dtype=str)).dropna().unique())
+        )
+    with fc4:
+        f_action_types = st.multiselect(
+            "Action Type", options=sorted(log_df_full.get("action_type", pd.Series(dtype=str)).dropna().unique())
+        )
+    with fc5:
+        f_search = st.text_input("Search message / committer / parameter")
+
+    log_df = filter_log_df(
+        log_df_full,
+        cell_groups=f_cell_groups or None,
+        cell_ids=f_cell_ids or None,
+        optimizers=f_optimizers or None,
+        action_types=f_action_types or None,
+        search_text=f_search or None,
+    )
+
+    if log_df.empty:
+        st.markdown(
+            "<div class='alert-warn'>⚠️ No commits match the current filters.</div>",
             unsafe_allow_html=True,
         )
         st.stop()
@@ -404,7 +597,7 @@ def main():
         st.stop()
 
     # ════════════════════════════════════════════════════════════════
-    #  SECTION 1 — ACTION TIMELINE
+    #  SECTION 1 — ACTION TIMELINE (filterable, browsable)
     # ════════════════════════════════════════════════════════════════
     st.markdown(
         "<div class='section-header'>① Action Timeline — Commit Hunk Distribution</div>",
@@ -413,6 +606,19 @@ def main():
     fig_timeline = plot_action_timeline(hunks)
     st.plotly_chart(fig_timeline, width="stretch")
     st.caption("Hover over a marker to see committer, timestamp, and message details.")
+
+    with st.expander("📋 Browse commits (sortable / searchable table)", expanded=False):
+        browse_df = log_df.copy()
+        cols_order = [
+            c for c in ["date", "cell_id", "cell_group", "action_type", "optimizer",
+                        "committer", "parameter", "from_val", "to_val", "message", "commit_hash"]
+            if c in browse_df.columns
+        ]
+        st.dataframe(
+            browse_df[cols_order].sort_values("date", ascending=False),
+            width="stretch",
+            height=320,
+        )
 
     st.markdown("---")
 
@@ -435,6 +641,7 @@ def main():
         )
         selected_hunk = next(h for h in hunks if h["label"] == selected_label)
         action_date = selected_hunk["date"]
+        is_last_hunk = selected_hunk is hunks[-1]
 
     with col_kpi:
         selected_kpi = st.selectbox("KPI to analyse", options=kpi_columns)
@@ -521,6 +728,18 @@ def main():
         )
         st.stop()
 
+    # ── Restrict to the cell(s) currently in scope (filter bar / hunk) ─
+    scope_cells = f_cell_ids or ([selected_hunk["cell_id"]] if "cell_id" in selected_hunk else available_cells)
+    if "cell_id" in kpi_df.columns and scope_cells:
+        kpi_df = kpi_df[kpi_df["cell_id"].isin(scope_cells)]
+
+    if kpi_df.empty:
+        st.markdown(
+            "<div class='alert-warn'>⚠️ No KPI data for the selected cell(s).</div>",
+            unsafe_allow_html=True,
+        )
+        st.stop()
+
     # ── Aggregate matching weekdays (Feature 2) ────────────────────────
     try:
         before_df, after_df, after_dates, before_dates = collect_matching_weekdays(
@@ -594,22 +813,38 @@ def main():
 
         st.caption(f"Showing  {_fmt(time_range_vals[0])} → {_fmt(time_range_vals[1])}")
 
+    # Open-ended windows (no next-hunk cap — typically the most recent
+    # action) default to a simple two-line Before/After comparison
+    # instead of a per-day trend, since averaging dozens/hundreds of
+    # days into individual lines is unreadable and rarely useful.
+    open_ended_window = next_hunk_date is None or ignore_next
+
     with ctrl_b:
         show_individual = st.checkbox(
             "Show days individually",
-            value=(len(after_dates) > 1),
+            value=(len(after_dates) > 1 and not open_ended_window),
             help=(
                 "When checked, each After day is plotted separately against its "
                 "matched Before day.  Days are grouped by weekday.  "
-                "Uncheck to collapse back to the aggregated mean."
+                "Uncheck to collapse back to the aggregated mean.  "
+                "Defaults to OFF for open-ended windows (e.g. the most recent "
+                "action with no next commit to cap it) to avoid a cluttered "
+                "chart — you get a clean two-line Before/After comparison instead."
             ),
         )
+        show_ma = False
+        if not show_individual:
+            show_ma = st.checkbox(
+                "Also show moving-average trend line",
+                value=not open_ended_window,
+                help="Uncheck for a clean two-line Before/After comparison only.",
+            )
 
     with ctrl_c:
         show_commits = st.checkbox(
             "Annotate commits on chart",
             value=True,
-            help="Draw vertical markers for every commit in the selected hunk.",
+            help="Draw vertical markers, at their actual time of day, for every commit in the selected hunk.",
         )
 
     # ── Collect commits to annotate (all commits in selected hunk) ────
@@ -741,8 +976,15 @@ def main():
             before_dates,
             commits_in_window=commits_to_annotate,
             time_range=time_range,
+            show_ma=show_ma,
         )
         st.plotly_chart(fig_trend, width="stretch")
+        if open_ended_window and not show_individual:
+            st.caption(
+                "Open-ended evaluation window (no next action to cap it) — "
+                "showing a simple two-line Before/After comparison rather than "
+                f"averaging all {n_after} day(s) into a cluttered trend."
+            )
 
     st.markdown("---")
 
@@ -812,6 +1054,169 @@ def main():
                     f"<div class='value' style='color:{color}'>{val}</div></div>",
                     unsafe_allow_html=True,
                 )
+
+    st.markdown("---")
+
+    # ════════════════════════════════════════════════════════════════
+    #  SECTION 6 — CROSS-ACTION / CROSS-CELL COMPARISON
+    # ════════════════════════════════════════════════════════════════
+    st.markdown(
+        "<div class='section-header'>⑥ Comparison — Actions vs Actions, Cells vs Cells</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Compare several optimization actions on the same cell, or the same/"
+        "similar action across different cells, for their effect on one KPI."
+    )
+
+    per_cell_hunks = build_action_hunks_by_cell(log_df)
+    if not per_cell_hunks:
+        st.info("No per-cell actions available to compare under the current filters.")
+    else:
+        cmp_c1, cmp_c2 = st.columns([3, 1])
+        with cmp_c1:
+            cmp_labels = [h["label"] for h in per_cell_hunks]
+            chosen_labels = st.multiselect(
+                "Actions to compare (2+)",
+                options=cmp_labels,
+                default=cmp_labels[-min(3, len(cmp_labels)):],
+            )
+        with cmp_c2:
+            cmp_kpi = st.selectbox("KPI", options=kpi_columns, key="cmp_kpi")
+            cmp_days = st.number_input("After-window length (days)", min_value=1, max_value=14, value=1)
+
+        chosen_actions = [h for h in per_cell_hunks if h["label"] in chosen_labels]
+        if len(chosen_actions) >= 2:
+            cmp_dates = [a["date"] for a in chosen_actions]
+            cmp_fetch_start = (
+                datetime.strptime(min(cmp_dates), "%Y-%m-%d") - timedelta(days=7)
+            ).strftime("%Y-%m-%d")
+            cmp_fetch_end = (
+                datetime.strptime(max(cmp_dates), "%Y-%m-%d") + timedelta(days=int(cmp_days))
+            ).strftime("%Y-%m-%d")
+            full_kpi_df = _get_kpi_data(conn, start=cmp_fetch_start, end=cmp_fetch_end)
+            comparison_df = compare_actions(full_kpi_df, chosen_actions, cmp_kpi, eval_days=int(cmp_days))
+            if comparison_df.empty:
+                st.warning("Not enough data to compare the selected actions.")
+            else:
+                fig_cmp = plot_action_comparison(comparison_df, cmp_kpi, polarity_map.get(cmp_kpi, "higher"))
+                st.plotly_chart(fig_cmp, width="stretch")
+                st.dataframe(comparison_df, width="stretch")
+        else:
+            st.info("Select at least two actions to compare.")
+
+    st.markdown("---")
+
+    # ════════════════════════════════════════════════════════════════
+    #  SECTION 7 — ACTION COMMIT & ROLLBACK
+    # ════════════════════════════════════════════════════════════════
+    st.markdown(
+        "<div class='section-header'>⑦ Action Commit &amp; Rollback</div>",
+        unsafe_allow_html=True,
+    )
+
+    commit_c1, commit_c2 = st.columns([1, 1])
+    with commit_c1:
+        with st.form("commit_action_form"):
+            st.markdown("**Commit a new action**")
+            ca_cell = st.selectbox("Cell", options=all_cell_ids, key="ca_cell")
+            ca_param = st.selectbox("Parameter", options=param_names, key="ca_param")
+            ca_current = get_current_param_value(conn, ca_cell, ca_param)
+            st.caption(f"Current value: `{ca_current}`")
+            ca_value = st.text_input("New value", value=str(ca_current) if ca_current is not None else "")
+            ca_msg = st.text_input("Commit message", value=f"Adjust {ca_param} on {ca_cell}")
+            ca_submit = st.form_submit_button("✅ Commit Action", type="primary")
+            if ca_submit:
+                commit_action(conn, ca_cell, ca_param, ca_value, ca_msg, committer="you")
+                _get_log.clear()
+                _get_kpi_data.clear()
+                st.success(f"Committed {ca_param} = {ca_value} on {ca_cell}.")
+                st.rerun()
+
+    with commit_c2:
+        st.markdown("**Rollback a recent commit**")
+        recent = log_df.sort_values("date", ascending=False).head(15)
+        for _, r in recent.iterrows():
+            rc1, rc2 = st.columns([4, 1])
+            with rc1:
+                st.markdown(
+                    f"`{str(r['commit_hash'])[:8]}` · {r['date']} · "
+                    f"**{r.get('cell_id','—')}** · {r.get('parameter','—')}: "
+                    f"{r.get('from_val','—')} → {r.get('to_val','—')}  \n"
+                    f"<span style='color:#6b8cae'>{r['message']}</span>",
+                    unsafe_allow_html=True,
+                )
+            with rc2:
+                if st.button("↩ Rollback", key=f"rb_{r['commit_hash']}"):
+                    rollback_action(conn, r["commit_hash"], committer="you")
+                    _get_log.clear()
+                    _get_kpi_data.clear()
+                    st.success(f"Rolled back {str(r['commit_hash'])[:8]}.")
+                    st.rerun()
+
+    st.markdown("---")
+
+    # ════════════════════════════════════════════════════════════════
+    #  SECTION 8 — GRADUAL PARAMETER SWEEP
+    # ════════════════════════════════════════════════════════════════
+    st.markdown(
+        "<div class='section-header'>⑧ Parameter Sweep — Automated Step Optimization</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Incrementally step a parameter in fixed increments over a defined "
+        "period. Each due step is auto-committed on load; once complete, the "
+        "best-scoring value can be auto-committed as the permanent setting."
+    )
+
+    sweep_c1, sweep_c2 = st.columns([1, 1])
+    with sweep_c1:
+        with st.form("create_sweep_form"):
+            st.markdown("**Configure a new sweep**")
+            sw_cell = st.selectbox("Cell", options=all_cell_ids, key="sw_cell")
+            sw_param = st.selectbox("Parameter", options=param_names, key="sw_param")
+            sw_current = get_current_param_value(conn, sw_cell, sw_param)
+            try:
+                sw_default_start = float(sw_current)
+            except (TypeError, ValueError):
+                sw_default_start = 0.0
+            sw_start = st.number_input("Start value", value=sw_default_start)
+            sw_step = st.number_input("Step size", value=float(param_catalog.get(sw_param, {}).get("step") or 0.5))
+            sw_n = st.number_input("Number of steps", min_value=2, max_value=20, value=5)
+            sw_interval = st.number_input("Days between steps", min_value=1, max_value=30, value=3)
+            sw_submit = st.form_submit_button("🚀 Start Sweep", type="primary")
+            if sw_submit:
+                create_parameter_sweep(
+                    conn, sw_cell, sw_param, sw_start, sw_step, int(sw_n), int(sw_interval), committer="you"
+                )
+                st.success(f"Sweep started for {sw_param} on {sw_cell}.")
+                st.rerun()
+
+    with sweep_c2:
+        st.markdown("**Active & completed sweeps**")
+        sweeps = get_sweeps(conn)
+        if not sweeps:
+            st.info("No sweeps configured yet.")
+        for sw in sweeps:
+            done = sum(1 for s in sw["steps"] if s["executed"])
+            st.markdown(
+                f"`{sw['id']}` · **{sw['cell_id']} · {sw['parameter']}** · "
+                f"status: **{sw['status']}** · {done}/{sw['n_steps']} steps executed"
+            )
+            step_rows = pd.DataFrame(sw["steps"])
+            st.dataframe(step_rows, width="stretch", height=160)
+            if sw["status"] == "completed":
+                st.markdown(
+                    f"🎯 Best value found: **{sw['best_value']}** "
+                    f"(step {sw['best_step_index'] + 1}/{sw['n_steps']})"
+                )
+                if st.button("✅ Finalize — auto-commit best value", key=f"fin_{sw['id']}"):
+                    finalize_sweep(conn, sw["id"])
+                    _get_log.clear()
+                    _get_kpi_data.clear()
+                    st.success("Best value committed.")
+                    st.rerun()
+            st.markdown("---")
 
     # ── Footer ────────────────────────────────────────────────────────
     st.markdown(

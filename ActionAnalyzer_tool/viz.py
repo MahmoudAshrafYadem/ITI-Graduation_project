@@ -68,6 +68,27 @@ def _hhmm(minute_of_day: int) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def _commit_minute_of_day(commit: dict) -> int | None:
+    """Parse a commit's actual hour:minute into a 0–1439 minute-of-day value."""
+    raw = str(commit.get("date", ""))
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(raw[: len(fmt) + 2].strip(), fmt)
+            return dt.hour * 60 + dt.minute
+        except ValueError:
+            continue
+    return None
+
+
+def _snap_to_available(target_minute: int, available_minutes: list[int]) -> int:
+    """Snap a target minute-of-day to the nearest minute actually present
+    on the x-axis (the data may be on a 15-min grid while a commit's real
+    timestamp can fall anywhere)."""
+    if not available_minutes:
+        return target_minute
+    return min(available_minutes, key=lambda m: abs(m - target_minute))
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  CHART 1 — ENRICHED INTERACTIVE ACTION TIMELINE HUD
 # ══════════════════════════════════════════════════════════════════════
@@ -196,6 +217,7 @@ def plot_kpi_trend(
     before_dates: list[str],
     commits_in_window: list[dict] | None = None,
     time_range: tuple[int, int] | None = None,
+    show_ma: bool = True,
 ) -> go.Figure:
     """
     Dual-line overlay of averaged Before and After profiles.
@@ -206,6 +228,10 @@ def plot_kpi_trend(
                             Each dict must have 'date' and optionally 'message'.
         time_range        : (start_minute, end_minute) 0-1439 tuple to slice x-axis.
                             If None, the full day is shown.
+        show_ma           : when False, omit the dotted moving-average trace so
+                            exactly two lines (Before, After) are drawn — used
+                            for simple before/after comparisons (e.g. the most
+                            recent action with an open-ended evaluation window).
     """
     # ── Apply time range slice ──────────────────────────────────────
     if time_range:
@@ -248,29 +274,30 @@ def plot_kpi_trend(
         )
     )
 
-    window = max(4, len(after_df) // 24)
-    ma = after_df[kpi].rolling(window=window, center=True).mean()
-    fig.add_trace(
-        go.Scatter(
-            x=x_ticks,
-            y=ma.round(4),
-            mode="lines",
-            name=f"MA({window}) After",
-            line=dict(color=AMBER, width=1.2, dash="dot"),
-            hovertemplate=f"<b>Moving Avg</b><br>Time: %{{x}}<br>{kpi}: %{{y:.4f}}<extra></extra>",
+    if show_ma:
+        window = max(4, len(after_df) // 24)
+        ma = after_df[kpi].rolling(window=window, center=True).mean()
+        fig.add_trace(
+            go.Scatter(
+                x=x_ticks,
+                y=ma.round(4),
+                mode="lines",
+                name=f"MA({window}) After",
+                line=dict(color=AMBER, width=1.2, dash="dot"),
+                hovertemplate=f"<b>Moving Avg</b><br>Time: %{{x}}<br>{kpi}: %{{y:.4f}}<extra></extra>",
+            )
         )
-    )
 
     # ── Commit annotations as vertical lines on the x-axis ─────────
-    # Commits have a date but not a specific intra-day minute, so we
-    # draw them at minute 0 of that date's label (x = "00:00").
-    # We label them above the top of the chart using annotations.
+    # Each commit is anchored at its own actual hour:minute, snapped to
+    # the nearest minute-of-day present on the x-axis grid.
     if commits_in_window:
         yvals = list(after_df[kpi].dropna())
         y_max = max(yvals) if yvals else 1
         y_min = min(yvals) if yvals else 0
         y_span = y_max - y_min or 1
 
+        available_minutes = list(after_df.index)
         COMMIT_COLORS = [CYAN, GREEN, AMBER, "#a78bfa", "#f472b6"]
 
         for i, commit in enumerate(commits_in_window):
@@ -279,7 +306,11 @@ def plot_kpi_trend(
             c_hash = str(commit.get("commit_hash", ""))[:8]
             c_who = commit.get("committer", "")
             color = COMMIT_COLORS[i % len(COMMIT_COLORS)]
-            x_val = "00:00"  # anchor to start of day on the minute axis
+            target_minute = _commit_minute_of_day(commit)
+            if target_minute is None:
+                continue
+            snapped = _snap_to_available(target_minute, available_minutes)
+            x_val = _hhmm(snapped)  # anchor at the commit's real time of day
 
             # vertical line shape
             fig.add_shape(
@@ -297,7 +328,7 @@ def plot_kpi_trend(
                 y=y_max + y_span * (0.12 + i * 0.10),
                 xref="x",
                 yref="y",
-                text=f"<b>{c_date}</b>  #{c_hash}<br>"
+                text=f"<b>{c_date} {_hhmm(target_minute)}</b>  #{c_hash}<br>"
                 f"<span style='color:{MUTED}'>{c_msg}</span>",
                 showarrow=True,
                 arrowhead=2,
@@ -438,13 +469,18 @@ def plot_kpi_trend_individual(
             y_min = min(all_y)
             y_span = y_max - y_min or 1
             COMMIT_COLORS = [CYAN, GREEN, AMBER, "#a78bfa", "#f472b6"]
+            available_minutes = list(after_df.index) if not after_df.empty else []
 
             for ci, commit in enumerate(commits_in_window):
                 c_date = str(commit.get("date", ""))[:10]
                 c_msg = commit.get("message", "—")[:40]
                 c_hash = str(commit.get("commit_hash", ""))[:8]
                 color = COMMIT_COLORS[ci % len(COMMIT_COLORS)]
-                x_val = "00:00"
+                target_minute = _commit_minute_of_day(commit)
+                if target_minute is None:
+                    continue
+                snapped = _snap_to_available(target_minute, available_minutes)
+                x_val = _hhmm(snapped)  # anchor at the commit's real time of day
 
                 fig.add_shape(
                     type="line",
@@ -461,7 +497,7 @@ def plot_kpi_trend_individual(
                     y=y_max + y_span * (0.12 + ci * 0.10),
                     xref="x",
                     yref="y",
-                    text=f"<b>{c_date}</b>  #{c_hash}<br>"
+                    text=f"<b>{c_date} {_hhmm(target_minute)}</b>  #{c_hash}<br>"
                     f"<span style='color:{MUTED}'>{c_msg}</span>",
                     showarrow=True,
                     arrowhead=2,
@@ -610,6 +646,80 @@ def plot_delta_bars(
             yaxis=dict(
                 title=f"Δ {kpi}", gridcolor=BORDER, linecolor=BORDER, zeroline=False
             ),
+        )
+    )
+    return fig
+
+
+# ══════════════════════════════════════════════════════════════════════
+#  CHART 4 — CROSS-ACTION / CROSS-CELL COMPARISON
+# ══════════════════════════════════════════════════════════════════════
+
+
+def plot_action_comparison(comparison_df: pd.DataFrame, kpi: str, polarity: str) -> go.Figure:
+    """
+    Grouped bar chart comparing Before vs After averages for several
+    actions (same cell / different actions, or same action type across
+    different cells) on a single KPI.
+    """
+    if comparison_df.empty:
+        return go.Figure()
+
+    labels = [f"{r['Cell']} · {r['Date']}" for _, r in comparison_df.iterrows()]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=labels,
+            y=comparison_df["Before Avg"],
+            name="Before",
+            marker_color=MUTED,
+            opacity=0.85,
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=labels,
+            y=comparison_df["After Avg"],
+            name="After",
+            marker_color=CYAN,
+            opacity=0.9,
+        )
+    )
+
+    def _color(d: float) -> str:
+        return (
+            GREEN
+            if (polarity == "lower" and d < 0) or (polarity == "higher" and d > 0)
+            else RED
+        )
+
+    for i, (_, r) in enumerate(comparison_df.iterrows()):
+        fig.add_annotation(
+            x=labels[i],
+            y=max(r["Before Avg"], r["After Avg"]) * 1.06,
+            text=f"{r['Abs Change']:+.3f} ({r['% Change']:+.1f}%)",
+            showarrow=False,
+            font=dict(size=9, color=_color(r["Abs Change"]), family=FONT),
+        )
+
+    fig.update_layout(
+        **_base_layout(
+            title=dict(
+                text=f"Action Comparison — {kpi}",
+                font=dict(color=CYAN, size=13, family=FONT),
+                x=0,
+            ),
+            height=420,
+            barmode="group",
+            bargap=0.25,
+            xaxis=dict(
+                title="Action (cell · date)",
+                gridcolor=BORDER,
+                linecolor=BORDER,
+                tickfont=dict(color=MUTED, size=9),
+            ),
+            yaxis=dict(title=kpi, gridcolor=BORDER, linecolor=BORDER),
         )
     )
     return fig
